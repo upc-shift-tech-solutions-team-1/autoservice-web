@@ -1,10 +1,9 @@
 /**
  * Application router configuration.
- * Handles route registration and authentication guards.
+ * Handles route registration, authentication and role-based authorization.
  */
 
 import { createRouter, createWebHistory } from 'vue-router';
-
 import { useAuthStore } from '../domains/auth/application/auth.store';
 
 const routes = [
@@ -44,13 +43,14 @@ const routes = [
         }
     },
 
-    // ── Admin layout ──────────────────────────────────────
+    // ── Administrator routes ──────────────────────────────
     {
         path: '/',
         component: () =>
             import('../shared/presentation/admin-layout.vue'),
         meta: {
-            requiresAuth: true
+            requiresAuth: true,
+            role: 'admin'
         },
         children: [
             {
@@ -125,32 +125,48 @@ const router = createRouter({
 });
 
 /**
- * Global authentication and authorization guard.
+ * Global authentication and role-based authorization guard.
  */
 router.beforeEach((to) => {
     const authStore = useAuthStore();
 
+    // Private route without a valid authenticated session.
     if (
         to.meta.requiresAuth &&
         !authStore.isAuthenticated
     ) {
+        return {
+            path: '/login',
+            query: {
+                redirect: to.fullPath
+            }
+        };
+    }
+
+    // Authenticated users should not return to the login screen.
+    if (
+        to.path === '/login' &&
+        authStore.isAuthenticated
+    ) {
+        return authStore.userRole === 'mechanic'
+            ? '/mechanic/workspace'
+            : '/';
+    }
+
+    // Role-protected route.
+    if (
+        to.meta.role &&
+        authStore.userRole !== to.meta.role
+    ) {
+        if (authStore.userRole === 'mechanic') {
+            return '/mechanic/workspace';
+        }
+
+        if (authStore.userRole === 'admin') {
+            return '/';
+        }
+
         return '/login';
-    }
-
-    if (
-        authStore.isAuthenticated &&
-        authStore.userRole === 'mechanic' &&
-        to.path === '/'
-    ) {
-        return '/mechanic/workspace';
-    }
-
-    if (
-        authStore.isAuthenticated &&
-        authStore.userRole === 'mechanic' &&
-        to.path.startsWith('/admin')
-    ) {
-        return '/mechanic/workspace';
     }
 
     return true;
