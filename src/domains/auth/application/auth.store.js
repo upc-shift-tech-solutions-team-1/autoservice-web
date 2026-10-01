@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia';
 import http from '../../../shared/infrastructure/http-common';
 
+const SUPPORTED_ROLES = ['admin', 'mechanic'];
+
 /**
  * Pinia store for authentication management.
  * Handles user state, token persistence, and authentication actions.
@@ -14,52 +16,106 @@ export const useAuthStore = defineStore('auth', {
     }),
 
     getters: {
-        /** Returns true if a token exists */
-        isAuthenticated: (state) => !!state.token,
+        /**
+         * Returns true only when both token and user data exist.
+         */
+        isAuthenticated: (state) =>
+            !!state.token &&
+            !!state.user &&
+            SUPPORTED_ROLES.includes(
+                state.user?.role?.toLowerCase()
+            ),
 
-        /** Returns the current workshop ID of the user */
-        currentWorkshopId: (state) => state.user ? state.user.workshopId : null,
+        /**
+         * Returns the current workshop ID of the authenticated user.
+         */
+        currentWorkshopId: (state) =>
+            state.user?.workshopId || null,
 
-        /** Returns the role of the user, defaults to 'admin' */
-        userRole: (state) => state.user?.role || 'admin',
+        /**
+         * Returns the authenticated user's role.
+         * No administrative role is assumed when the session is missing.
+         */
+        userRole: (state) =>
+            state.user?.role?.toLowerCase() || null,
 
-        /** Returns the mechanic ID of the user */
-        mechanicId: (state) => state.user?.mechanicId || null
+        /**
+         * Returns the mechanic ID when the authenticated user
+         * belongs to the mechanic role.
+         */
+        mechanicId: (state) =>
+            state.user?.mechanicId || null
     },
 
     actions: {
         /**
          * Logs in a user with email and password.
-         * @param {string} email - User email
-         * @param {string} password - User password
-         * @returns {Promise<boolean>} True if login successful, false otherwise
+         *
+         * @param {string} email User email.
+         * @param {string} password User password.
+         * @returns {Promise<boolean>} True when login succeeds.
          */
         async login(email, password) {
             this.loading = true;
             this.error = null;
+
             try {
-                const response = await http.post('/auth/sign-in', {
-                    email,
-                    password
-                });
+                const response = await http.post(
+                    '/auth/sign-in',
+                    {
+                        email: email.trim(),
+                        password
+                    }
+                );
+
+                const role =
+                    response.data.role?.toLowerCase();
+
+                if (!SUPPORTED_ROLES.includes(role)) {
+                    this.clearSession();
+                    this.error =
+                        'El usuario tiene un rol no reconocido.';
+                    return false;
+                }
+
+                if (!response.data.token) {
+                    this.clearSession();
+                    this.error =
+                        'No se recibió un token de autenticación.';
+                    return false;
+                }
 
                 const userData = {
                     id: response.data.id,
                     email: response.data.email,
-                    role: response.data.role,
-                    workshopId: response.data.workshopId,
-                    mechanicId: response.data.mechanicId
+                    role,
+                    workshopId:
+                    response.data.workshopId,
+                    mechanicId:
+                    response.data.mechanicId
                 };
 
                 this.user = userData;
                 this.token = response.data.token;
 
-                localStorage.setItem('user', JSON.stringify(userData));
-                localStorage.setItem('token', this.token);
+                localStorage.setItem(
+                    'user',
+                    JSON.stringify(userData)
+                );
+
+                localStorage.setItem(
+                    'token',
+                    this.token
+                );
 
                 return true;
             } catch (err) {
-                this.error = err.response?.data?.message || 'Error al iniciar sesión';
+                this.clearSession();
+
+                this.error =
+                    err.response?.data?.message ||
+                    'Error al iniciar sesión';
+
                 return false;
             } finally {
                 this.loading = false;
@@ -67,24 +123,38 @@ export const useAuthStore = defineStore('auth', {
         },
 
         /**
-         * Registers a new workshop with credentials.
-         * @param {string} workshopName - Name of the workshop
-         * @param {string} email - Admin email
-         * @param {string} password - Admin password
-         * @returns {Promise<boolean>} True if registration successful, false otherwise
+         * Registers a new workshop and its administrator account.
+         *
+         * @param {string} workshopName Workshop name.
+         * @param {string} email Administrator email.
+         * @param {string} password Administrator password.
+         * @returns {Promise<boolean>} True when registration succeeds.
          */
-        async registerWorkshop(workshopName, email, password) {
+        async registerWorkshop(
+            workshopName,
+            email,
+            password
+        ) {
             this.loading = true;
             this.error = null;
+
             try {
-                await http.post('/auth/register-workshop', {
-                    workshopName,
-                    email,
-                    password
-                });
+                await http.post(
+                    '/auth/register-workshop',
+                    {
+                        workshopName:
+                            workshopName.trim(),
+                        email: email.trim(),
+                        password
+                    }
+                );
+
                 return true;
             } catch (error) {
-                this.error = error.response?.data?.message || 'Error al registrar el taller';
+                this.error =
+                    error.response?.data?.message ||
+                    'Error al registrar el taller';
+
                 return false;
             } finally {
                 this.loading = false;
@@ -92,27 +162,22 @@ export const useAuthStore = defineStore('auth', {
         },
 
         /**
-         * Logs out the current user and clears local storage.
+         * Clears the current authentication session.
          */
-        logout() {
+        clearSession() {
             this.user = null;
             this.token = null;
+
             localStorage.removeItem('user');
             localStorage.removeItem('token');
         },
 
-        async forgotPassword(email) {
-            this.loading = true;
+        /**
+         * Logs out the current user.
+         */
+        logout() {
+            this.clearSession();
             this.error = null;
-            try {
-                await http.post('/auth/forgot-password', { email });
-                return { success: true, message: 'Se ha enviado un enlace de recuperación a tu correo.' };
-            } catch (err) {
-                this.error = err.response?.data?.message || 'No se pudo procesar la solicitud.';
-                return { success: false, message: this.error };
-            } finally {
-                this.loading = false;
-            }
-        },
+        }
     }
 });
