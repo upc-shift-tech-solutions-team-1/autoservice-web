@@ -1,0 +1,38 @@
+name: Vue Continuous Integration
+
+on:
+  push:
+    branches: [main, master, develop, 'feature/*']
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and Run E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run E2E tests
+        run: |
+          npm run dev &
+          npx wait-on http://localhost:5173
+          npm run test:e2e
+        env:
+          CI: true
+
+      # Opcionalmente probamos que el build para producción funcione correctamente
+      - name: Build Vue app
+        run: npx vite build
