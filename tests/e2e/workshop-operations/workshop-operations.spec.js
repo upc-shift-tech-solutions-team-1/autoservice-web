@@ -14,13 +14,13 @@ describe('Workshop Operations Context', () => {
         driver = await setupDriver();
         // Maximize the window to prevent hidden elements in responsive UI
         await driver.manage().window().maximize();
-    });
+    }, 30000);
 
     afterAll(async () => {
         if (driver) {
             await driver.quit();
         }
-    });
+    }, 30000);
 
     it('should login successfully as an administrator', async () => {
         await driver.get(`${BASE_URL}/login`);
