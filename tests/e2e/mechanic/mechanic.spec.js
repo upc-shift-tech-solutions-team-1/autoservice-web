@@ -13,13 +13,13 @@ describe('Mechanic Context', () => {
     beforeAll(async () => {
         driver = await setupDriver();
         await driver.manage().window().maximize();
-    });
+    }, 30000);
 
     afterAll(async () => {
         if (driver) {
             await driver.quit();
         }
-    });
+    }, 30000);
 
     it('should login and navigate to mechanic dashboard', async () => {
         await driver.get(`${BASE_URL}/login`);
