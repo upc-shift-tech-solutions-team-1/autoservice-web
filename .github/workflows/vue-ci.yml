@@ -32,7 +32,6 @@ jobs:
           npm run test:e2e
         env:
           CI: true
-
-      # Opcionalmente probamos que el build para producción funcione correctamente
+      
       - name: Build Vue app
         run: npx vite build
