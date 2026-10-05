@@ -8,11 +8,9 @@ import Card from 'primevue/card';
 import Tag from 'primevue/tag';
 import ProgressBar from 'primevue/progressbar';
 import Message from 'primevue/message';
-import Dialog from 'primevue/dialog';
-import RadioButton from 'primevue/radiobutton';
 
 import { TrackingService } from '../infrastructure/tracking.service';
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const trackingCode = ref('');
 const order = ref(null);
@@ -20,19 +18,12 @@ const vehicle = ref(null);
 const customer = ref(null);
 const workshop = ref(null);
 const tasks = ref([]);
+const history = ref([]);
 const loading = ref(false);
 const errorMsg = ref('');
 
 const dynamicWorkshopName = computed(() => workshop.value?.name || workshop.value?.workshopName || 'Auto-Taller');
-const dynamicWorkshopEmail = computed(() => workshop.value?.email || 'contacto@taller.com');
-
-const paymentDialogVisible = ref(false);
-const paymentMethod = ref('card');
-const cardNumber = ref('');
-const cardExpiry = ref('');
-const cardCvv = ref('');
-const paymentLoading = ref(false);
-const paymentSuccess = ref(false);
+const standardStages = ['PENDING', 'IN_PROGRESS', 'FINISHED', 'DELIVERED'];
 
 const searchOrder = async () => {
   const code = trackingCode.value.trim();
@@ -45,144 +36,82 @@ const searchOrder = async () => {
   errorMsg.value = '';
 
   try {
-    console.log('Buscando orden con código:', code);
+    const [summaryResult, orderResult] = await Promise.allSettled([
+      TrackingService.getSummaryByCode(code),
+      TrackingService.getOrderByCode(code)
+    ]);
 
-    // Llamada única al servicio
-    const response = await TrackingService.getOrderByCode(code);
-    console.log('Respuesta completa:', response);
+    if (summaryResult.status === 'rejected') {
+      throw summaryResult.reason;
+    }
 
-    // Verificar si la respuesta tiene datos
-    if (!response || !response.data) {
-      errorMsg.value = t('tracking.notFound');
-      loading.value = false;
+    const summary = summaryResult.value?.data;
+    if (!summary || !summary.costs || !Array.isArray(summary.tasks) || !Array.isArray(summary.history)) {
+      throw new Error('Invalid tracking summary response');
+    }
+
+    order.value = summary;
+    tasks.value = summary.tasks;
+    history.value = summary.history;
+
+    if (orderResult.status === 'rejected') {
+      console.warn('No se pudieron cargar los identificadores públicos relacionados:', orderResult.reason);
       return;
     }
 
-    // Si la respuesta es un array (como parece ser)
-    let orderData;
-    if (Array.isArray(response.data)) {
-      if (response.data.length === 0) {
-        errorMsg.value = t('tracking.notFound');
-        loading.value = false;
-        return;
-      }
-      orderData = response.data[0]; // Tomamos el primer elemento
-    } else {
-      orderData = response.data;
-    }
+    const orderData = Array.isArray(orderResult.value?.data)
+      ? orderResult.value.data[0]
+      : null;
 
-    // Verificar que el orden tenga los datos necesarios
-    if (!orderData || !orderData.id) {
-      errorMsg.value = t('tracking.invalidId');
-      loading.value = false;
+    if (!orderData) {
+      console.warn('La respuesta pública de la orden no contiene datos relacionados.');
       return;
     }
 
-    order.value = orderData;
-    console.log('Orden encontrada:', orderData);
+    const relatedRequests = [
+      orderData.vehicleId
+        ? TrackingService.getVehicle(orderData.vehicleId)
+            .then(response => ({ type: 'vehicle', data: response.data }))
+            .catch(error => {
+              console.error('Error al obtener vehículo:', error);
+              return { type: 'vehicle', data: null };
+            })
+        : Promise.resolve({ type: 'vehicle', data: null }),
+      orderData.customerId
+        ? TrackingService.getCustomer(orderData.customerId)
+            .then(response => ({ type: 'customer', data: response.data }))
+            .catch(error => {
+              console.error('Error al obtener cliente:', error);
+              return { type: 'customer', data: { fullName: 'Cliente' } };
+            })
+        : Promise.resolve({ type: 'customer', data: { fullName: 'Cliente' } }),
+      orderData.workshopId
+        ? TrackingService.getWorkshop(orderData.workshopId)
+            .then(response => ({ type: 'workshop', data: response.data }))
+            .catch(error => {
+              console.error('Error al obtener taller:', error);
+              return { type: 'workshop', data: null };
+            })
+        : Promise.resolve({ type: 'workshop', data: null })
+    ];
 
-    // Verificar que tenga los IDs necesarios
-    if (!orderData.vehicleId) {
-      console.warn('La orden no tiene vehicleId');
-    }
-    if (!orderData.customerId) {
-      console.warn('La orden no tiene customerId');
-    }
-    if (!orderData.workshopId) {
-      console.warn('La orden no tiene workshopId');
-    }
-
-    // Traer datos relacionados con manejo de errores individual
-    const fetchPromises = [];
-
-    // Vehículo
-    if (orderData.vehicleId) {
-      fetchPromises.push(
-          TrackingService.getVehicle(orderData.vehicleId)
-              .then(res => ({ type: 'vehicle', data: res.data }))
-              .catch(err => {
-                console.error('Error al obtener vehículo:', err);
-                return { type: 'vehicle', data: null };
-              })
-      );
-    } else {
-      fetchPromises.push(Promise.resolve({ type: 'vehicle', data: null }));
-    }
-
-    // Tareas
-    if (orderData.id) {
-      fetchPromises.push(
-          TrackingService.getTasksByOrder(orderData.id)
-              .then(res => ({ type: 'tasks', data: res.data }))
-              .catch(err => {
-                console.error('Error al obtener tareas:', err);
-                return { type: 'tasks', data: [] };
-              })
-      );
-    } else {
-      fetchPromises.push(Promise.resolve({ type: 'tasks', data: [] }));
-    }
-
-    // Cliente
-    if (orderData.customerId) {
-      fetchPromises.push(
-          TrackingService.getCustomer(orderData.customerId)
-              .then(res => ({ type: 'customer', data: res.data }))
-              .catch(err => {
-                console.error('Error al obtener cliente:', err);
-                return { type: 'customer', data: { fullName: 'Cliente' } };
-              })
-      );
-    } else {
-      fetchPromises.push(Promise.resolve({ type: 'customer', data: { fullName: 'Cliente' } }));
-    }
-
-    // Taller
-    if (orderData.workshopId) {
-      fetchPromises.push(
-          TrackingService.getWorkshop(orderData.workshopId)
-              .then(res => ({ type: 'workshop', data: res.data }))
-              .catch(err => {
-                console.error('Error al obtener taller:', err);
-                return { type: 'workshop', data: null };
-              })
-      );
-    } else {
-      fetchPromises.push(Promise.resolve({ type: 'workshop', data: null }));
-    }
-
-    // Esperar todas las promesas
-    const results = await Promise.all(fetchPromises);
-
-    // Asignar resultados
-    results.forEach(result => {
-      switch(result.type) {
-        case 'vehicle':
-          vehicle.value = result.data;
-          break;
-        case 'tasks':
-          tasks.value = Array.isArray(result.data) ? result.data : [];
-          break;
-        case 'customer':
-          customer.value = result.data;
-          break;
-        case 'workshop':
-          workshop.value = result.data;
-          break;
-      }
+    const relatedResults = await Promise.all(relatedRequests);
+    relatedResults.forEach(result => {
+      if (result.type === 'vehicle') vehicle.value = result.data;
+      if (result.type === 'customer') customer.value = result.data;
+      if (result.type === 'workshop') workshop.value = result.data;
     });
-
-    console.log('Datos cargados:', { vehicle: vehicle.value, tasks: tasks.value, customer: customer.value, workshop: workshop.value });
 
   } catch (err) {
     console.error('Error en searchOrder:', err);
-    errorMsg.value = err.response?.data?.message || t('tracking.errorConnection');
+    errorMsg.value = err.response?.status === 404
+      ? t('tracking.notFound')
+      : err.response?.data?.message || t('tracking.errorConnection');
   } finally {
     loading.value = false;
   }
 };
 
-// Resto de métodos sin cambios...
 const resetSearch = () => {
   order.value = null;
   trackingCode.value = '';
@@ -190,26 +119,7 @@ const resetSearch = () => {
   customer.value = null;
   workshop.value = null;
   tasks.value = [];
-  paymentSuccess.value = false;
-};
-
-const openPaymentModal = () => {
-  paymentDialogVisible.value = true;
-};
-
-const executeSimulatedPayment = async () => {
-  paymentLoading.value = true;
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  paymentLoading.value = false;
-  paymentSuccess.value = true;
-
-  if (paymentMethod.value !== 'cash') {
-    order.value.status = 'DELIVERED';
-  }
-};
-
-const printReceipt = () => {
-  window.print();
+  history.value = [];
 };
 
 const getStatusMessage = computed(() => {
@@ -225,12 +135,73 @@ const getStatusMessage = computed(() => {
 
 const getProgressValue = computed(() => {
   if (!order.value) return 0;
-  if (order.value.status === 'DELIVERED' || order.value.status === 'FINISHED') return 100;
-  if (!tasks.value.length) return 0;
-
-  const completed = tasks.value.filter(t => t.status === 'COMPLETED').length;
-  return Math.round((completed / tasks.value.length) * 100);
+  return Number(order.value.progressPercentage) || 0;
 });
+
+const historySteps = computed(() => {
+  if (!order.value) return [];
+
+  const currentStatus = order.value.status;
+  const recordedStages = new Map();
+  history.value.forEach(stage => recordedStages.set(stage.status, stage.changedAtUtc));
+
+  if (currentStatus === 'CANCELLED') {
+    const recorded = history.value.map(stage => ({
+      status: stage.status,
+      changedAtUtc: stage.changedAtUtc,
+      state: 'completed'
+    }));
+    const cancelledStage = recorded.find(stage => stage.status === currentStatus);
+    if (!cancelledStage) {
+      recorded.push({ status: currentStatus, changedAtUtc: null, state: 'current' });
+    } else {
+      cancelledStage.state = 'current';
+    }
+    return recorded;
+  }
+
+  const currentIndex = standardStages.indexOf(currentStatus);
+  if (currentIndex < 0) {
+    return history.value.map(stage => ({
+      status: stage.status,
+      changedAtUtc: stage.changedAtUtc,
+      state: stage.status === currentStatus ? 'current' : 'completed'
+    }));
+  }
+
+  return standardStages.map((status, index) => ({
+    status,
+    changedAtUtc: recordedStages.get(status) || null,
+    state: index < currentIndex ? 'completed' : index === currentIndex ? 'current' : 'pending'
+  }));
+});
+
+const formatHistoryDate = value => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(locale.value, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date);
+};
+
+const formatCurrency = value => new Intl.NumberFormat(locale.value, {
+  style: 'currency',
+  currency: 'PEN'
+}).format(Number(value) || 0);
+
+const stageLabel = status => t(`tracking.stages.${status.toLowerCase()}`);
+
+const safeEvidenceUrl = evidence => {
+  if (!evidence) return null;
+  try {
+    const url = new URL(evidence);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+};
 </script>
 
 <template>
@@ -268,18 +239,9 @@ const getProgressValue = computed(() => {
       <div v-else class="result-section fade-in">
         <div class="flex justify-content-between align-items-center mb-3">
           <Button icon="pi pi-arrow-left" text :label="t('tracking.backButton')" @click="resetSearch" />
-
-          <Button
-              v-if="order.status === 'FINISHED' || order.status === 'DELIVERED'"
-              icon="pi pi-download"
-              severity="secondary"
-              outlined
-              :label="t('tracking.payment.downloadReceipt') || 'Comprobante PDF'"
-              @click="printReceipt"
-          />
         </div>
 
-        <Card class="status-card mb-4">
+        <Card class="status-card mb-4" data-testid="tracking-status">
           <template #content>
             <div class="status-header">
               <h2>{{ t('tracking.greeting', { name: customer?.fullName || 'Cliente' }) }}</h2>
@@ -294,27 +256,78 @@ const getProgressValue = computed(() => {
               </div>
             </div>
 
+            <div class="estimated-date mt-3" data-testid="tracking-estimated-date">
+              <i class="pi pi-calendar mr-2"></i>
+              <span class="font-semibold">{{ t('tracking.estimatedDate') }}:</span>
+              <span>{{ order.estimatedDate || t('tracking.estimatedDateUnavailable') }}</span>
+            </div>
+
             <div class="progress-container mt-4 pt-3 border-top-1 border-white-alpha-20">
               <div class="flex justify-content-between mb-2">
                 <span class="font-semibold">{{ t('tracking.progress') }}</span>
-                <strong>{{ getProgressValue }}%</strong>
+                <strong data-testid="tracking-progress-value">{{ getProgressValue }}%</strong>
               </div>
               <ProgressBar :value="getProgressValue" :showValue="false" class="custom-progress" />
             </div>
           </template>
         </Card>
 
+        <Card class="history-card mb-4" data-testid="tracking-history">
+          <template #title>{{ t('tracking.history.title') }}</template>
+          <template #content>
+            <ol v-if="historySteps.length" class="history-timeline" data-testid="tracking-history-list">
+              <li
+                  v-for="(stage, index) in historySteps"
+                  :key="`${stage.status}-${index}`"
+                  class="history-item"
+                  :class="`history-item--${stage.state}`"
+                  data-testid="tracking-history-item"
+              >
+                <span class="history-marker" aria-hidden="true">
+                  <i :class="stage.state === 'completed' ? 'pi pi-check' : stage.state === 'current' ? 'pi pi-circle-fill' : 'pi pi-circle'" />
+                </span>
+                <div>
+                  <strong>{{ stageLabel(stage.status) }}</strong>
+                  <span v-if="stage.state === 'current'" class="history-state">{{ t('tracking.history.current') }}</span>
+                  <span v-else-if="stage.state === 'pending'" class="history-state">{{ t('tracking.history.pending') }}</span>
+                  <time v-if="stage.changedAtUtc" class="history-date">{{ formatHistoryDate(stage.changedAtUtc) }}</time>
+                </div>
+              </li>
+            </ol>
+            <Message v-else severity="info" :closable="false">{{ t('tracking.history.empty') }}</Message>
+          </template>
+        </Card>
+
         <Card class="tasks-card">
           <template #title>{{ t('tracking.tasksTitle') }}</template>
           <template #content>
-            <div class="tasks-list">
-              <div v-for="task in tasks" :key="task.id" class="task-item">
+            <div v-if="tasks.length" class="tasks-list">
+              <div v-for="(task, index) in tasks" :key="`${task.description}-${index}`" class="task-item" data-testid="tracking-task">
                 <div class="flex justify-content-between align-items-start mb-2">
                   <span class="font-bold text-lg color-title">{{ task.description }}</span>
                   <Tag
-                      :value="$t(`taskStatus.${task.status.toLowerCase()}`)"
+                      :value="t(`taskStatus.${task.status.toLowerCase()}`)"
                       :severity="task.status === 'COMPLETED' ? 'success' : 'warning'"
                   />
+                </div>
+
+                <div v-if="task.technicalDiagnosis" class="task-public-detail">
+                  <strong>{{ t('tracking.taskDetails.diagnosis') }}</strong>
+                  <p>{{ task.technicalDiagnosis }}</p>
+                </div>
+                <div v-if="task.customerExplanation" class="task-public-detail">
+                  <strong>{{ t('tracking.taskDetails.explanation') }}</strong>
+                  <p>{{ task.customerExplanation }}</p>
+                </div>
+                <div v-if="task.evidenceRegistered" class="task-public-detail">
+                  <strong>{{ t('tracking.taskDetails.evidence') }}</strong>
+                  <p v-if="!safeEvidenceUrl(task.evidenceRegistered)">{{ task.evidenceRegistered }}</p>
+                  <a
+                      v-else
+                      :href="safeEvidenceUrl(task.evidenceRegistered)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                  >{{ t('tracking.taskDetails.openEvidence') }}</a>
                 </div>
 
                 <div v-if="task.parts && task.parts.length" class="materials-box mt-3">
@@ -322,184 +335,41 @@ const getProgressValue = computed(() => {
                   <ul class="p-0 m-0 mt-2 list-none">
                     <li v-for="(part, i) in task.parts" :key="i" class="flex justify-content-between text-sm py-2 border-bottom-1 border-gray-200">
                       <span>{{ part.quantity }}x {{ part.name }}</span>
-                      <span class="font-medium">S/. {{ ((part.unitPrice || 0) * part.quantity).toFixed(2) }}</span>
+                      <span class="font-medium">{{ formatCurrency((part.unitPrice || 0) * part.quantity) }}</span>
                     </li>
                   </ul>
                 </div>
 
-                <div class="flex justify-content-end mt-3">
-                  <span class="font-bold" style="color: #0b1680;">S/. {{ task.laborPrice }} <span class="font-normal text-sm text-gray-500">({{ t('tracking.labor') }})</span></span>
+                <div class="task-costs mt-3">
+                  <span>{{ t('tracking.costs.labor') }}: <strong>{{ formatCurrency(task.laborPrice) }}</strong></span>
+                  <span>{{ t('tracking.costs.materials') }}: <strong>{{ formatCurrency(task.materialsCost) }}</strong></span>
                 </div>
               </div>
             </div>
+            <Message v-else severity="info" :closable="false">{{ t('tracking.tasksEmpty') }}</Message>
 
-            <div class="mt-4 pt-3 border-top-1 border-gray-300 flex justify-content-between align-items-center">
-              <span class="text-xl font-bold color-title">{{ t('tracking.totalCost') }}</span>
-              <span class="text-3xl font-bold" style="color: #0b1680;">S/. {{ order.price }}</span>
-            </div>
-
-            <div v-if="order.status === 'FINISHED'" class="mt-4">
-              <Button
-                  :label="t('tracking.payment.payButton')"
-                  icon="pi pi-credit-card"
-                  class="w-full payment-trigger-btn"
-                  @click="openPaymentModal"
-              />
+            <div class="cost-breakdown mt-4 pt-3 border-top-1 border-gray-300" data-testid="tracking-costs">
+              <div class="cost-line">
+                <span>{{ t('tracking.costs.laborSubtotal') }}</span>
+                <strong>{{ formatCurrency(order.costs.laborSubtotal) }}</strong>
+              </div>
+              <div class="cost-line">
+                <span>{{ t('tracking.costs.materialsSubtotal') }}</span>
+                <strong>{{ formatCurrency(order.costs.materialsSubtotal) }}</strong>
+              </div>
+              <div class="cost-line cost-line--total">
+                <span>{{ t('tracking.costs.total') }}</span>
+                <strong>{{ formatCurrency(order.costs.total) }}</strong>
+              </div>
             </div>
           </template>
         </Card>
       </div>
     </div>
 
-    <Dialog v-model:visible="paymentDialogVisible" modal :header="t('tracking.payment.dialogTitle')" :style="{ width: '500px' }" class="payment-dialog">
-      <div v-if="!paymentSuccess" class="payment-flow-container">
-        <div class="total-badge mb-4">
-          <span>{{ t('tracking.totalCost') }}</span>
-          <h2>S/. {{ order?.price }}</h2>
-        </div>
-
-        <label class="block font-bold text-sm mb-3 text-gray-700 uppercase tracking-wider">{{ t('tracking.payment.selectMethod') }}</label>
-
-        <div class="methods-grid mb-4">
-          <div class="method-option" :class="{ active: paymentMethod === 'card' }" @click="paymentMethod = 'card'">
-            <RadioButton v-model="paymentMethod" inputId="methodCard" name="payment" value="card" />
-            <label for="methodCard" class="ml-2"><i class="pi pi-credit-card mr-2"></i>{{ t('tracking.payment.card') }}</label>
-          </div>
-          <div class="method-option" :class="{ active: paymentMethod === 'qr' }" @click="paymentMethod = 'qr'">
-            <RadioButton v-model="paymentMethod" inputId="methodQr" name="payment" value="qr" />
-            <label for="methodQr" class="ml-2"><i class="pi pi-qrcode mr-2"></i>{{ t('tracking.payment.qr') }}</label>
-          </div>
-          <div class="method-option" :class="{ active: paymentMethod === 'cash' }" @click="paymentMethod = 'cash'">
-            <RadioButton v-model="paymentMethod" inputId="methodCash" name="payment" value="cash" />
-            <label for="methodCash" class="ml-2"><i class="pi pi-money-bill mr-2"></i>{{ t('tracking.payment.cash') }}</label>
-          </div>
-        </div>
-
-        <div v-if="paymentMethod === 'card'" class="card-form fade-in">
-          <div class="field mb-3">
-            <label class="text-sm font-bold block mb-1 text-gray-600">{{ t('tracking.payment.cardNumber') }}</label>
-            <InputText v-model="cardNumber" placeholder="0000 0000 0000 0000" class="w-full" />
-          </div>
-          <div class="form-grid-2">
-            <div class="field">
-              <label class="text-sm font-bold block mb-1 text-gray-600">{{ t('tracking.payment.expiry') }}</label>
-              <InputText v-model="cardExpiry" placeholder="MM/AA" class="w-full" />
-            </div>
-            <div class="field">
-              <label class="text-sm font-bold block mb-1 text-gray-600">{{ t('tracking.payment.cvv') }}</label>
-              <InputText v-model="cardCvv" placeholder="123" class="w-full" />
-            </div>
-          </div>
-        </div>
-
-        <div v-else-if="paymentMethod === 'qr'" class="qr-container text-center py-3 fade-in">
-          <div class="qr-mock-box mx-auto mb-3">
-            <i class="pi pi-qrcode" style="font-size: 8rem; color: #1e293b;"></i>
-          </div>
-          <p class="text-sm text-gray-600 px-3">{{ t('tracking.payment.qrInstructions') }}</p>
-        </div>
-
-        <div v-else-if="paymentMethod === 'cash'" class="cash-container fade-in">
-          <Message severity="info" :closable="false" class="m-0">
-            {{ t('tracking.payment.cashMessage') }}
-          </Message>
-        </div>
-
-        <div class="flex justify-content-end gap-2 mt-4 pt-3 border-top-1 border-gray-200">
-          <Button :label="t('tracking.payment.cancel')" text severity="secondary" @click="paymentDialogVisible = false" />
-          <Button :label="paymentMethod === 'cash' ? t('tracking.payment.confirmAction') : t('tracking.payment.payAction', { total: order?.price })" :icon="paymentMethod === 'cash' ? 'pi pi-check' : 'pi pi-lock'" :loading="paymentLoading" @click="executeSimulatedPayment" />
-        </div>
-      </div>
-
-      <div v-else class="payment-success-screen text-center py-5 fade-in">
-        <i class="pi pi-check-circle text-7xl text-green-500 mb-3"></i>
-        <h2 class="text-2xl font-bold text-gray-800">{{ t('tracking.payment.successTitle') }}</h2>
-        <p class="text-gray-600 mt-2 px-4">{{ paymentMethod === 'cash' ? t('tracking.payment.successSubtitleCash') : t('tracking.payment.successSubtitleOnline') }}</p>
-        <Button :label="t('tracking.payment.close')" class="mt-4" severity="success" @click="paymentDialogVisible = false" />
-      </div>
-    </Dialog>
   </div>
 
-  <div v-if="order" class="print-receipt-sheet only-print">
-    <div class="receipt-header">
-      <div>
-        <h1>{{ dynamicWorkshopName }}</h1>
-        <p>{{ $t('tracking.receipt.contact') }} {{ dynamicWorkshopEmail }}</p>
-      </div>
-      <div class="receipt-meta">
-        <h2>{{ $t('tracking.receipt.title') }}</h2>
-        <p><strong>Código:</strong> {{ order.trackingCode || order.code || '---' }}</p>
-        <p><strong>{{ $t('tracking.receipt.issueDate') }}</strong> {{ new Date().toLocaleDateString() }}</p>
-      </div>
-    </div>
-
-    <hr class="receipt-divider" />
-
-    <div class="receipt-section">
-      <h3>{{ $t('tracking.receipt.customerVehicleData') }}</h3>
-      <table class="receipt-table-info">
-        <tbody> <!-- Envolver las filas en tbody -->
-        <tr>
-          <td><strong>{{ $t('tracking.receipt.customer') }}</strong></td>
-          <td>{{ customer?.fullName || '---' }}</td>
-          <td><strong>{{ $t('tracking.receipt.vehicle') }}</strong></td>
-          <td>{{ vehicle ? `${vehicle.brand} ${vehicle.model}` : '---' }}</td>
-        </tr>
-        <tr>
-          <td><strong>{{ $t('tracking.receipt.orderStatus') }}</strong></td>
-          <td>{{ order.status }}</td>
-          <td><strong>{{ $t('tracking.receipt.plate') }}</strong></td>
-          <td>{{ vehicle?.plate || '---' }}</td>
-        </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="receipt-section mt-4">
-      <h3>{{ $t('tracking.receipt.serviceDetail') }}</h3>
-      <table class="receipt-main-table">
-        <thead>
-        <tr>
-          <th>{{ $t('tracking.receipt.taskMaterialsDesc') }}</th>
-          <th class="text-right">{{ $t('tracking.receipt.labor') }}</th>
-        </tr>
-        </thead>
-        <tbody>
-        <template v-for="task in tasks" :key="task.id">
-          <tr class="task-row">
-            <td>
-              <strong>{{ task.description }}</strong>
-              <div v-if="task.parts && task.parts.length" class="print-parts-detail">
-                <ul>
-                  <li v-for="(part, i) in task.parts" :key="i">
-                    » {{ part.quantity }}x {{ part.name }} (S/. {{ (part.unitPrice * part.quantity).toFixed(2) }})
-                  </li>
-                </ul>
-              </div>
-            </td>
-            <td class="text-right font-mono">S/. {{ parseFloat(task.laborPrice).toFixed(2) }}</td>
-          </tr>
-        </template>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="receipt-summary">
-      <div class="summary-box">
-        <div class="summary-line">
-          <span>$t('tracking.receipt.complementaryTotal') }}</span>
-          <strong>S/. {{ parseFloat(order.price).toFixed(2) }}</strong>
-        </div>
-      </div>
-    </div>
-
-    <div class="receipt-footer">
-      <p>{{ $t('tracking.receipt.thankYou') }} {{ dynamicWorkshopName }}.</p>
-      <p>{{ $t('tracking.receipt.footerDisclaimer') }}</p>
-    </div>
-  </div>
 </template>
-
 <style scoped>
 /* Estilos normales de pantalla */
 .tracking-layout { min-height: 100vh; background: #f8fafc; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 2rem 1rem; transition: all 0.3s ease; }
@@ -512,35 +382,37 @@ const getProgressValue = computed(() => {
 .search-card { border-radius: 24px; box-shadow: 0 20px 40px rgba(15, 23, 42, 0.06); border: 1px solid #e2e8f0; width: 100%; }
 .search-form-layout { display: flex; flex-direction: column; gap: 1rem; align-items: center; }
 .search-btn { background: #0b1680; border-color: #0b1680; border-radius: 14px; padding: 0.85rem; }
-.payment-trigger-btn { background: #10b981; border-color: #10b981; border-radius: 14px; padding: 1rem; font-size: 1.1rem; font-weight: bold; width: 100%; }
-.payment-trigger-btn:hover { background: #059669 !important; }
-
-/* Modal de Pago */
-.total-badge { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 1rem; border-radius: 14px; display: flex; justify-content: space-between; align-items: center; }
-.total-badge span { color: #166534; font-weight: bold; text-transform: uppercase; font-size: 0.85rem; }
-.total-badge h2 { margin: 0; color: #14532d; font-size: 1.6rem; font-weight: 800; }
-.methods-grid { display: flex; flex-direction: column; gap: 0.75rem; }
-.method-option { display: flex; align-items: center; padding: 1rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; transition: all 0.2s ease; }
-.method-option:hover { border-color: #cbd5e1; background: #f8fafc; }
-.method-option.active { border-color: #0b1680; background: #eff6ff; }
-.method-option label { cursor: pointer; font-weight: 600; color: #334155; display: flex; align-items: center; }
-.method-option label i { font-size: 1.2rem; color: #475569; }
-.method-option.active label i { color: #0b1680; }
-.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.qr-mock-box { width: 160px; height: 160px; background: white; border: 1px solid #e2e8f0; border-radius: 16px; display: grid; place-items: center; }
 
 /* Cards de Resultados */
 .status-card { border-radius: 24px; background: linear-gradient(135deg, #0b1680 0%, #1e3a8a 100%); color: white; box-shadow: 0 14px 34px rgba(11, 22, 128, 0.2); }
 .status-header h2 { margin: 0; font-size: 1.8rem; }
 .status-msg { font-size: 1.1rem; line-height: 1.5; margin-top: 0.5rem; color: #e0e7ff; }
 .vehicle-info { display: flex; align-items: center; gap: 1rem; background: rgba(255,255,255,0.1); padding: 1.2rem; border-radius: 16px; }
+.estimated-date { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; color: #e0e7ff; }
 .text-white-alpha-70 { color: rgba(255,255,255,0.7); }
 .border-white-alpha-20 { border-color: rgba(255,255,255,0.2) !important; }
 .custom-progress { height: 10px; background: rgba(255,255,255,0.2); border-radius: 8px; }
 .custom-progress :deep(.p-progressbar-value) { background: #4ade80; }
+.history-card { border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); }
+.history-timeline { list-style: none; margin: 0; padding: 0; }
+.history-item { position: relative; display: flex; gap: 0.9rem; padding: 0 0 1.2rem; color: #64748b; }
+.history-item:not(:last-child)::before { content: ''; position: absolute; left: 0.55rem; top: 1.25rem; bottom: 0; border-left: 2px solid #cbd5e1; }
+.history-marker { position: relative; z-index: 1; width: 1.2rem; height: 1.2rem; display: grid; place-items: center; border-radius: 50%; background: white; color: #94a3b8; }
+.history-item--completed .history-marker { color: #16a34a; }
+.history-item--current { color: #0b1680; }
+.history-item--current .history-marker { color: #0b1680; }
+.history-state { display: inline-block; margin-left: 0.5rem; font-size: 0.8rem; color: #64748b; }
+.history-date { display: block; margin-top: 0.25rem; font-size: 0.85rem; color: #64748b; }
 .tasks-card { border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); }
 .task-item { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.25rem; margin-bottom: 1.2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
 .materials-box { background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px dashed #cbd5e1; }
+.task-public-detail { margin-top: 0.75rem; color: #475569; }
+.task-public-detail p { margin: 0.25rem 0 0; line-height: 1.5; }
+.task-public-detail a { display: inline-block; margin-top: 0.25rem; color: #0b1680; text-decoration: underline; }
+.task-costs, .cost-line { display: flex; justify-content: space-between; gap: 1rem; color: #475569; }
+.task-costs { flex-wrap: wrap; }
+.cost-breakdown { display: grid; gap: 0.75rem; }
+.cost-line--total { padding-top: 0.75rem; border-top: 1px solid #cbd5e1; color: #0b1680; font-size: 1.2rem; }
 .color-title { color: #0f172a; }
 .color-subtitle { color: #64748b; }
 .flex { display: flex; }
@@ -582,40 +454,5 @@ const getProgressValue = computed(() => {
 .text-center { text-align: center; }
 .block { display: block; }
 .fade-in { animation: fadeIn 0.3s ease-in; }
-
-/* Ocultar la estructura del PDF por defecto en pantalla */
-.only-print { display: none; }
-
-/* REGLAS CSS MÁGICAS PARA LA IMPRESIÓN (WINDOW.PRINT) */
-@media print {
-  .no-print, .p-dialog-mask, .p-component-overlay { display: none !important; }
-  .only-print { display: block !important; }
-  body { background: #ffffff !important; color: #000000 !important; font-size: 12pt; margin: 0; padding: 0; }
-  .print-receipt-sheet { max-width: 100%; padding: 20mm 15mm; box-sizing: border-box; }
-  .receipt-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
-  .receipt-header h1 { margin: 0; font-size: 24pt; color: #0b1680; font-weight: bold; text-transform: uppercase;}
-  .receipt-header p { margin: 2px 0; font-size: 10pt; color: #475569; }
-  .receipt-meta { text-align: right; }
-  .receipt-meta h2 { margin: 0 0 5px 0; font-size: 16pt; color: #0f172a; letter-spacing: 1px; }
-  .receipt-meta p { margin: 2px 0; font-size: 10pt; }
-  .receipt-divider { border: none; border-top: 2px solid #0b1680; margin: 15px 0; }
-  .receipt-section h3 { font-size: 12pt; margin: 0 0 8px 0; text-transform: uppercase; color: #1e3a8a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
-  .receipt-table-info { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 10.5pt; }
-  .receipt-table-info td { padding: 4px 8px; vertical-align: top; }
-  .receipt-main-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  .receipt-main-table th { background: #f1f5f9; text-align: left; padding: 8px 12px; font-size: 11pt; border-bottom: 2px solid #cbd5e1; }
-  .receipt-main-table td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 10.5pt; }
-  .task-row { page-break-inside: avoid; }
-  .print-parts-detail { margin-top: 4px; background: #f8fafc; padding: 6px; border-radius: 4px; }
-  .print-parts-detail ul { list-style: none; padding: 0; margin: 0; font-size: 9.5pt; color: #334155; }
-  .text-right { text-align: right !important; }
-  .font-mono { font-family: monospace; }
-  .receipt-summary { display: flex; justify-content: flex-end; margin-top: 20px; }
-  .summary-box { width: 280px; border-top: 2px solid #0b1680; padding-top: 8px; }
-  .summary-line { display: flex; justify-content: space-between; font-size: 12pt; }
-  .summary-line strong { font-size: 14pt; color: #0b1680; }
-  .receipt-footer { margin-top: 40px; text-align: center; font-size: 9pt; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 15px; }
-  .receipt-footer p { margin: 2px 0; }
-}
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 </style>

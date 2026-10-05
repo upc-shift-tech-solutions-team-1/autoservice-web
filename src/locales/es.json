@@ -571,6 +571,35 @@
     "materialsUsed": "Materiales a utilizar",
     "labor": "Mano de obra",
     "totalCost": "Costo Total Estimado",
+    "estimatedDate": "Fecha estimada de entrega",
+    "estimatedDateUnavailable": "No disponible",
+    "tasksEmpty": "Aún no hay tareas registradas para esta orden.",
+    "costs": {
+      "labor": "Mano de obra",
+      "materials": "Materiales",
+      "laborSubtotal": "Subtotal de mano de obra",
+      "materialsSubtotal": "Subtotal de materiales",
+      "total": "Costo total"
+    },
+    "taskDetails": {
+      "diagnosis": "Diagnóstico",
+      "explanation": "Detalle para el cliente",
+      "evidence": "Evidencia",
+      "openEvidence": "Ver evidencia"
+    },
+    "history": {
+      "title": "Historial del servicio",
+      "current": "Etapa actual",
+      "pending": "Pendiente",
+      "empty": "Aún no hay cambios de etapa registrados."
+    },
+    "stages": {
+      "pending": "Pendiente",
+      "in_progress": "En progreso",
+      "finished": "Finalizado",
+      "delivered": "Entregado",
+      "cancelled": "Cancelado"
+    },
     "statusMessages": {
       "pending": "Tu vehículo se encuentra registrado en {workshop} y está en la cola de diagnóstico.",
       "in_progress": "¡Manos a la obra! Nuestros mecánicos de {workshop} están trabajando en tu auto en este momento.",
