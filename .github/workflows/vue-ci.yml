@@ -29,6 +29,8 @@ jobs:
         run: |
           npm run dev &
           npx wait-on http://localhost:5173
+          echo "Despertando el backend en Render..."
+          curl --retry 10 --retry-delay 5 --retry-all-errors https://autoservice-backend-cnbd.onrender.com/api/v1 || true
           npm run test:e2e
         env:
           CI: true
