@@ -571,6 +571,35 @@
     "materialsUsed": "Materials to be used",
     "labor": "Labor",
     "totalCost": "Estimated Total Cost",
+    "estimatedDate": "Estimated delivery date",
+    "estimatedDateUnavailable": "Not available",
+    "tasksEmpty": "No tasks have been registered for this work order yet.",
+    "costs": {
+      "labor": "Labor",
+      "materials": "Materials",
+      "laborSubtotal": "Labor subtotal",
+      "materialsSubtotal": "Materials subtotal",
+      "total": "Total cost"
+    },
+    "taskDetails": {
+      "diagnosis": "Diagnosis",
+      "explanation": "Details for the customer",
+      "evidence": "Evidence",
+      "openEvidence": "View evidence"
+    },
+    "history": {
+      "title": "Service history",
+      "current": "Current stage",
+      "pending": "Pending",
+      "empty": "No stage changes have been recorded yet."
+    },
+    "stages": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "finished": "Finished",
+      "delivered": "Delivered",
+      "cancelled": "Cancelled"
+    },
     "statusMessages": {
       "pending": "Your vehicle is currently registered at {workshop} and is waiting in the diagnostic queue.",
       "in_progress": "Underway! Our certified mechanics at {workshop} are actively working on your car right now.",
