@@ -7,10 +7,13 @@ const publicHttp = axios.create({
 });
 
 export const TrackingService = {
-    getOrderByCode(trackingCode) { return publicHttp.get(`/workorders?trackingCode=${trackingCode}`); },
+    getOrderByCode(trackingCode) {
+        return publicHttp.get('/workorders', { params: { trackingCode } });
+    },
+    getSummaryByCode(trackingCode) {
+        return publicHttp.get('/summary', { params: { trackingCode } });
+    },
     getVehicle(vehicleId) { return publicHttp.get(`/vehicles/${vehicleId}`); },
-    getTasksByOrder(workOrderId) { return publicHttp.get(`/tasks?workOrderId=${workOrderId}`); },
     getCustomer(customerId) { return publicHttp.get(`/customers/${customerId}`); },
-    getWorkshop(workshopId) { return publicHttp.get(`/workshops/${workshopId}`); },
-    processPayment(workOrderId) { return publicHttp.patch(`/workorders/${workOrderId}`, { status: 'DELIVERED' }); }
+    getWorkshop(workshopId) { return publicHttp.get(`/workshops/${workshopId}`); }
 };
