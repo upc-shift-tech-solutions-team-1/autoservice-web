@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run tests/unit",
+    "test": "vitest run tests/unit tests/integration",
     "test:unit": "vitest run tests/unit",
     "test:unit:watch": "vitest tests/unit",
+    "test:integration": "vitest run tests/integration",
     "test:e2e": "vitest run tests/e2e"
   },
   "dependencies": {

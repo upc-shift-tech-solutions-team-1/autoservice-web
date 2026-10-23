@@ -7,6 +7,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
-    include: ['tests/unit/**/*.{test,spec}.{js,ts}']
+    include: [
+      'tests/unit/**/*.{test,spec}.{js,ts}',
+      'tests/integration/**/*.{test,spec}.{js,ts}'
+    ]
   }
 });
