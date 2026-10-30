@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 
@@ -59,6 +59,11 @@ const currentOrder = computed(() =>
 const orderTasks = computed(() =>
     taskStore.tasks.filter(task => String(task.workOrderId) === String(orderId))
 );
+const estimatedDateDraft = ref('');
+const delayReasonDraft = ref('');
+const savingEstimatedDate = ref(false);
+const estimatedDateError = ref('');
+const estimatedDateSaved = ref(false);
 /*const calculatedTotal = computed(() => {
   let total = 0;
   orderTasks.value.forEach(task => {
@@ -80,6 +85,27 @@ const calculatedTotal = computed(() => {
 
   return total.toFixed(2);
 });
+
+const persistedTotal = computed(() => {
+  if (currentOrder.value?.price === null || currentOrder.value?.price === undefined) {
+    return calculatedTotal.value;
+  }
+  const total = Number(currentOrder.value.price);
+  return Number.isFinite(total) ? total.toFixed(2) : calculatedTotal.value;
+});
+
+const currentEstimatedDate = computed(() =>
+    String(currentOrder.value?.estimatedDate || '').slice(0, 10)
+);
+
+const estimatedDateNeedsReason = computed(() =>
+    Boolean(estimatedDateDraft.value && currentEstimatedDate.value &&
+        estimatedDateDraft.value > currentEstimatedDate.value)
+);
+
+watch(currentOrder, (order) => {
+  if (order) estimatedDateDraft.value = String(order.estimatedDate || '').slice(0, 10);
+}, { immediate: true });
 
 
 const loadData = async () => {
@@ -106,6 +132,34 @@ const handleTaskSave = async (taskData) => {
     laborPrice: parseFloat(taskData.laborPrice || 0)
   });
   await workOrderStore.updateOrderAutoPrice(orderId, calculatedTotal.value);
+};
+
+const saveEstimatedDate = async () => {
+  estimatedDateError.value = '';
+  estimatedDateSaved.value = false;
+
+  if (!estimatedDateDraft.value || estimatedDateDraft.value === currentEstimatedDate.value) return;
+
+  const delayReason = delayReasonDraft.value.trim();
+  if (estimatedDateNeedsReason.value && !delayReason) {
+    estimatedDateError.value = t('workOrderDetail.estimatedDate.reasonRequired');
+    return;
+  }
+
+  savingEstimatedDate.value = true;
+  try {
+    await workOrderStore.updateWorkOrderEstimatedDate(
+        orderId,
+        estimatedDateDraft.value,
+        estimatedDateNeedsReason.value ? delayReason : null
+    );
+    delayReasonDraft.value = '';
+    estimatedDateSaved.value = true;
+  } catch (error) {
+    estimatedDateError.value = error.response?.data?.message || t('workOrderDetail.estimatedDate.updateError');
+  } finally {
+    savingEstimatedDate.value = false;
+  }
 };
 
 const deliverOrder = async () => {
@@ -219,7 +273,7 @@ const printOrder = () => {
       </table>
 
       <div class="total-row">
-        <strong>Total a Pagar: S/. ${calculatedTotal.value}</strong>
+        <strong>Total a Pagar: S/. ${persistedTotal.value}</strong>
       </div>
 
       <div class="footer">
@@ -247,7 +301,7 @@ const sendByEmail = (isReport = false) => {
 
 const shareByWhatsApp = () => {
   const order = currentOrder.value;
-  const message = `Orden de Trabajo #${order.trackingCode || order.id} - Total: S/. ${calculatedTotal.value}`;
+  const message = `Orden de Trabajo #${order.trackingCode || order.id} - Total: S/. ${persistedTotal.value}`;
   const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
   window.open(url, '_blank');
 };
@@ -280,6 +334,57 @@ const shareByWhatsApp = () => {
         <Card class="info-card">
           <template #title>{{ t('workOrderDetail.initialDescription') }}</template>
           <template #content><p>{{ currentOrder.description }}</p></template>
+        </Card>
+
+        <Card class="estimated-date-card mt-4" data-testid="work-order-estimated-date-editor">
+          <template #title>{{ t('workOrderDetail.estimatedDate.title') }}</template>
+          <template #content>
+            <form class="estimated-date-form" @submit.prevent="saveEstimatedDate">
+              <label for="estimated-delivery-date">{{ t('workOrderDetail.estimatedDate.dateLabel') }}</label>
+              <input
+                  id="estimated-delivery-date"
+                  v-model="estimatedDateDraft"
+                  data-testid="work-order-estimated-date-input"
+                  type="date"
+                  class="estimated-date-input"
+                  required
+                  @input="estimatedDateSaved = false; estimatedDateError = ''"
+              />
+
+              <div v-if="estimatedDateNeedsReason" class="delay-reason-field">
+                <label for="estimated-date-delay-reason">{{ t('workOrderDetail.estimatedDate.reasonLabel') }}</label>
+                <textarea
+                    id="estimated-date-delay-reason"
+                    v-model="delayReasonDraft"
+                    data-testid="work-order-delay-reason-input"
+                    class="delay-reason-input"
+                    rows="3"
+                    maxlength="1000"
+                    required
+                />
+                <small v-if="!delayReasonDraft.trim()" class="delay-reason-required">
+                  {{ t('workOrderDetail.estimatedDate.reasonRequired') }}
+                </small>
+                <small>{{ t('workOrderDetail.estimatedDate.reasonHelp') }}</small>
+              </div>
+
+              <Message v-if="estimatedDateError" severity="error" :closable="false" data-testid="work-order-estimated-date-error">
+                {{ estimatedDateError }}
+              </Message>
+              <Message v-if="estimatedDateSaved" severity="success" :closable="false" data-testid="work-order-estimated-date-success">
+                {{ t('workOrderDetail.estimatedDate.updated') }}
+              </Message>
+
+              <Button
+                  type="submit"
+                  :label="t('workOrderDetail.estimatedDate.save')"
+                  icon="pi pi-calendar"
+                  :loading="savingEstimatedDate"
+                  :disabled="savingEstimatedDate || !estimatedDateDraft || estimatedDateDraft === currentEstimatedDate"
+                  data-testid="work-order-estimated-date-save"
+              />
+            </form>
+          </template>
         </Card>
 
         <Card class="tasks-card mt-4">
@@ -336,7 +441,7 @@ const shareByWhatsApp = () => {
           <template #title>{{ t('workOrderDetail.quote.title') }}</template>
           <template #content>
             <div class="total-display">
-              <span>S/. {{ calculatedTotal }}</span>
+              <span data-testid="work-order-persisted-total">S/. {{ persistedTotal }}</span>
             </div>
 
             <div v-if="!isMechanic && currentOrder.status === 'FINISHED'" class="admin-validation mt-4">
@@ -378,6 +483,10 @@ const shareByWhatsApp = () => {
 .font-bold { font-weight: bold; }
 
 .total-display { padding: 1.5rem 0; color: #0b1680; font-size: 2.5rem; font-weight: bold; text-align: center; }
+.estimated-date-form { display: grid; gap: 0.75rem; }
+.estimated-date-input, .delay-reason-input { width: 100%; box-sizing: border-box; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+.delay-reason-field { display: grid; gap: 0.5rem; }
+.delay-reason-required { color: #b91c1c; }
 .w-full { width: 100%; }
 .admin-validation { padding-top: 1rem; border-top: 1px solid #e2e8f0; }
 @media (max-width: 768px) { .layout-grid { grid-template-columns: 1fr; } }
