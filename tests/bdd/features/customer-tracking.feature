@@ -8,7 +8,10 @@ Feature: Customer tracks a work order using its public tracking code
     When the customer submits a valid tracking code
     Then the associated order status and backend-calculated service progress are displayed
     And the estimated delivery date and service history are displayed
+    And any recorded estimated delivery date changes and their public reasons are displayed without identifying staff
+    And the primary mechanic name and specialty are displayed when assigned
     And the task details and customer-facing cost breakdown are displayed
+    And the total matches the backend-calculated task costs
     And no payment action or payment receipt is offered
     And details from unrelated orders are not displayed
 

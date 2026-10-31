@@ -103,12 +103,31 @@ export const useWorkOrderStore = defineStore('workOrder', {
                 sparePartsChecked: updateData.qaChecklist?.sparePartsChecked || false,
                 diagnosisValidated: updateData.qaChecklist?.diagnosisValidated || false,
                 cleaningDone: updateData.qaChecklist?.cleaningDone || false,
-                finalTestDone: updateData.qaChecklist?.finalTestDone || false
+                finalTestDone: updateData.qaChecklist?.finalTestDone || false,
+                ...(updateData.delayReason !== undefined
+                    ? { delayReason: updateData.delayReason }
+                    : {})
             };
 
             const response = await http.put(`/workorders/${id}`, payload);
             this._updateLocalOrder(id, response.data);
             return response.data;
+        },
+
+        async updateWorkOrderEstimatedDate(id, estimatedDate, delayReason = null) {
+            const existingOrder = this.workOrders.find(
+                (workOrder) => String(workOrder.id) === String(id)
+            );
+
+            if (!existingOrder) {
+                return;
+            }
+
+            return this.updateWorkOrderChecklist(id, {
+                ...existingOrder,
+                estimatedDate,
+                delayReason
+            });
         },
 
         _updateLocalOrder(id, data) {

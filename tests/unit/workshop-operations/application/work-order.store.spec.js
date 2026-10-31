@@ -172,4 +172,44 @@ describe('WorkOrder Store (Workshop Operations Application)', () => {
         expect(store.workOrders[0].qaChecklist.tasksCompleted).toBe(true);
         expect(store.workOrders[0].qaChecklist.finalTestDone).toBe(true);
     });
+
+    it('should submit the reason when the workshop postpones the estimated date', async () => {
+        const store = useWorkOrderStore();
+        store.workOrders = [
+            {
+                id: 24,
+                description: 'Reparación de frenos',
+                estimatedDate: '2026-11-15',
+                status: 'IN_PROGRESS',
+                price: 420,
+                qaChecklist: {
+                    tasksCompleted: false,
+                    sparePartsChecked: false,
+                    diagnosisValidated: true,
+                    cleaningDone: false,
+                    finalTestDone: false
+                }
+            }
+        ];
+        http.put.mockResolvedValueOnce({
+            data: {
+                ...store.workOrders[0],
+                estimatedDate: '2026-11-20'
+            }
+        });
+
+        await store.updateWorkOrderEstimatedDate(
+            24,
+            '2026-11-20',
+            'El repuesto solicitado aún no llegó.'
+        );
+
+        expect(http.put).toHaveBeenCalledWith('/workorders/24', expect.objectContaining({
+            estimatedDate: '2026-11-20',
+            delayReason: 'El repuesto solicitado aún no llegó.',
+            price: 420,
+            status: 'IN_PROGRESS'
+        }));
+        expect(store.workOrders[0].estimatedDate).toBe('2026-11-20');
+    });
 });
