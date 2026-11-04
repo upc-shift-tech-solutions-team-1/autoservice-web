@@ -7,8 +7,8 @@ describe('Fleet Management Context', () => {
     const BASE_URL = 'http://localhost:5173';
 
     // User provided credentials
-    const ADMIN_EMAIL = 'deploytest20260915@autoservice.com';
-    const ADMIN_PASSWORD = 'Test1234!';
+    const ADMIN_EMAIL = "admin.e2e@example.test";
+    const ADMIN_PASSWORD = "e2e-only-password";
 
     beforeAll(async () => {
         driver = await setupDriver();
@@ -83,7 +83,8 @@ describe('Fleet Management Context', () => {
         await addVehicleBtn.click();
 
         // Wait for the modal dialog to appear
-        const dialog = await driver.wait(until.elementLocated(By.css('.vehicle-dialog, .p-dialog')), 5000);
+        const dialog = await driver.wait(until.elementLocated(By.css('.vehicle-dialog')), 5000);
+        await driver.wait(until.elementIsVisible(dialog), 5000);
         expect(await dialog.isDisplayed()).toBe(true);
 
         // Select Customer from PrimeVue Select

@@ -7,6 +7,9 @@ on:
     branches: [main, master, develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     name: Build and Run E2E Tests
@@ -25,15 +28,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run E2E tests
-        run: |
-          npm run dev &
-          npx wait-on http://localhost:5173
-          echo "Despertando el backend en Render..."
-          curl --retry 10 --retry-delay 5 --retry-all-errors https://autoservice-backend-cnbd.onrender.com/api/v1 || true
-          npm run test:e2e
-        env:
-          CI: true
-      
+      - name: Run unit, integration and BDD tests
+        run: npm test
+
       - name: Build Vue app
         run: npx vite build
+
+      - name: Run E2E tests
+        run: |
+          if [ "${VITE_API_URL:-}" != "http://127.0.0.1:4001/api/v1" ]; then
+            echo "E2E bloqueado: API aislada requerida"
+            exit 1
+          fi
+          node tests/e2e/mock-api/server.cjs &
+          npx --no-install wait-on --timeout 30000 http-get://127.0.0.1:4001/health
+          node -e 'fetch("http://127.0.0.1:4001/health").then(r => { if (!r.ok) throw Error("Health HTTP failure"); return r.json(); }).then(d => { if (d.environment !== "e2e-mock") throw Error("Unexpected API environment"); console.log("E2E mock identity verified"); }).catch(e => { console.error(e.message); process.exit(1); })'
+          npm run dev &
+          npx --no-install wait-on --timeout 30000 http://localhost:5173
+          npm run test:e2e
+        env:
+          CI: "true"
+          VITE_API_URL: http://127.0.0.1:4001/api/v1

@@ -7,11 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run tests/unit tests/integration tests/bdd",
-    "test:unit": "vitest run tests/unit",
-    "test:unit:watch": "vitest tests/unit",
-    "test:integration": "vitest run tests/integration",
-    "test:bdd": "vitest run tests/bdd",
+    "test": "vitest run tests/unit tests/integration tests/bdd --environment happy-dom",
+    "test:unit": "vitest run tests/unit --environment happy-dom",
+    "test:unit:watch": "vitest tests/unit --environment happy-dom",
+    "test:integration": "vitest run tests/integration --environment happy-dom",
+    "test:bdd": "vitest run tests/bdd --environment happy-dom",
     "test:e2e": "vitest run tests/e2e"
   },
   "dependencies": {
@@ -33,6 +33,7 @@
     "happy-dom": "^21.0.4",
     "selenium-webdriver": "^4.50.0",
     "vite": "^8.0.10",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "wait-on": "^9.5.1"
   }
 }
