@@ -573,6 +573,17 @@
     "totalCost": "Estimated Total Cost",
     "estimatedDate": "Estimated delivery date",
     "estimatedDateUnavailable": "Not available",
+    "estimatedDateHistory": {
+      "title": "Delivery date history",
+      "reason": "Reason for change",
+      "initial": "Initial estimated date recorded by the workshop.",
+      "updated": "Estimated date updated by the workshop."
+    },
+    "primaryMechanic": {
+      "title": "Responsible mechanic",
+      "name": "Name",
+      "specialty": "Specialty"
+    },
     "tasksEmpty": "No tasks have been registered for this work order yet.",
     "costs": {
       "labor": "Labor",
@@ -846,6 +857,16 @@
     },
     "quote": {
       "title": "Total Order Cost"
+    },
+    "estimatedDate": {
+      "title": "Estimated delivery date",
+      "dateLabel": "New estimated date",
+      "reasonLabel": "Reason for delay",
+      "reasonHelp": "Briefly explain the reason so the customer can be informed. Maximum 1000 characters.",
+      "reasonRequired": "Enter a reason before postponing the estimated date.",
+      "save": "Update date",
+      "updated": "The estimated date was updated successfully.",
+      "updateError": "The estimated date could not be updated. Please try again."
     },
     "title": "Work Order Details",
     "validation": {
