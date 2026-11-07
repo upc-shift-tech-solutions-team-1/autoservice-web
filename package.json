@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node init && vite",
-    "build": "node init && vite build",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run tests/unit tests/integration tests/bdd --environment happy-dom",
     "test:unit": "vitest run tests/unit --environment happy-dom",
