@@ -4,8 +4,31 @@ import { setupDriver } from '../support/driverSetup';
 
 describe('Workshop repair quality and delivery', () => {
     let driver;
+
+    const checkQualityField = async (field) => {
+        await driver.wait(async () => {
+            try {
+                const input = await driver.findElement(By.id(`quality-${field}`));
+                if (await input.isSelected()) return true;
+                if (!(await input.isEnabled())) return false;
+
+                // Click the component root: the transparent native input overlays
+                // its sibling visual box, which Selenium treats as an intercepted click.
+                const checkbox = await input.findElement(By.xpath('..'));
+                await driver.executeScript("arguments[0].scrollIntoView({block: 'center', inline: 'center'});", checkbox);
+                if (!(await checkbox.isDisplayed())) return false;
+                await checkbox.click();
+                return await input.isSelected();
+            } catch (error) {
+                if (['StaleElementReferenceError', 'ElementClickInterceptedError', 'ElementNotInteractableError', 'NoSuchElementError'].includes(error.name)) return false;
+                throw error;
+            }
+        }, 10000, `The quality checkbox ${field} could not be selected`);
+    };
+
     beforeAll(async () => {
         driver = await setupDriver();
+        await driver.manage().window().setRect({ width: 1280, height: 900 });
         await driver.get('http://localhost:5173/login');
         await driver.findElement(By.id('email')).sendKeys('admin.e2e@example.test');
         await driver.findElement(By.css('.p-password-input')).sendKeys('e2e-only-password');
@@ -27,12 +50,17 @@ describe('Workshop repair quality and delivery', () => {
         const finish = await driver.findElement(By.css('[data-testid="finish-work-order"]'));
         expect(await finish.isEnabled()).toBe(false);
         for (const field of ['tasksCompleted', 'sparePartsChecked', 'diagnosisValidated', 'cleaningDone', 'finalTestDone']) {
-            await driver.findElement(By.css(`label[for="quality-${field}"]`)).click();
+            await checkQualityField(field);
         }
+        await driver.wait(until.elementIsEnabled(finish), 5000);
+        await driver.executeScript("arguments[0].scrollIntoView({block: 'center'});", finish);
         await finish.click();
         const deliver = await driver.wait(until.elementLocated(By.xpath("//button[.//span[text()='Entregar vehículo']]")), 5000);
         saved = await fetch(`${process.env.VITE_API_URL}/workorders`).then(r => r.json());
         expect(saved.find(order => order.id === 2).status).toBe('FINISHED');
+        for (const field of ['tasksCompleted', 'sparePartsChecked', 'diagnosisValidated', 'cleaningDone', 'finalTestDone']) {
+            expect(saved.find(order => order.id === 2)[field]).toBe(true);
+        }
         await deliver.click();
         await driver.wait(until.stalenessOf(deliver), 5000);
         saved = await fetch(`${process.env.VITE_API_URL}/workorders`).then(r => r.json());
