@@ -88,8 +88,8 @@ const workOrders = [
         customerId: 2,
         mechanicId: 1,
         description: 'Revision general E2E',
-        status: 'PENDING',
-        price: 180,
+        status: 'IN_PROGRESS',
+        price: 80,
         estimatedDate: '2026-12-16',
         startDate: '2026-11-03',
         tasksCompleted: false,
@@ -128,7 +128,7 @@ const tasks = [
         workOrderId: 2,
         mechanicId: 1,
         description: 'Inspeccion general E2E',
-        status: 'PENDING',
+        status: 'COMPLETED',
         priority: 'LOW',
         estimatedTime: 45,
         laborPrice: 80,
@@ -138,7 +138,7 @@ const tasks = [
         technicalDiagnosis: '',
         customerExplanation: '',
         internalObservation: '',
-        adminReviewStatus: 'PENDING',
+        adminReviewStatus: 'APPROVED',
         customerReportStatus: '',
         materialRequestStatus: '',
         completedAt: null,
@@ -293,6 +293,67 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && req.url === '/api/v1/workorders') {
         sendJson(res, 200, workOrders);
+        return;
+    }
+
+    if (req.method === 'PUT' && /^\/api\/v1\/workorders\/\d+$/.test(req.url)) {
+        let raw = '';
+        for await (const chunk of req) raw += chunk;
+        const body = JSON.parse(raw);
+        const order = workOrders.find(item => item.id === Number(req.url.split('/').pop()));
+        if (!order) { sendJson(res, 404, {}); return; }
+        if (body.estimatedDate > order.estimatedDate && !body.delayReason?.trim()) {
+            sendJson(res, 400, { message: 'Debe indicar el motivo cuando se retrasa la fecha estimada.' }); return;
+        }
+        Object.assign(order, body);
+        sendJson(res, 200, order);
+        return;
+    }
+
+    // Stateful fixtures for UI persistence assertions. Never connected to production.
+    if (req.method === 'POST' && ['/api/v1/workorders', '/api/v1/tasks'].includes(req.url)) {
+        let raw = '';
+        for await (const chunk of req) raw += chunk;
+        const body = JSON.parse(raw);
+        if (req.url === '/api/v1/workorders') {
+            const order = { ...body, id: Math.max(...workOrders.map(o => o.id)) + 1,
+                workshopId: 'e2e-workshop', status: 'PENDING', price: 0,
+                trackingCode: `E2E-CREATED-${workOrders.length + 1}` };
+            workOrders.push(order);
+            sendJson(res, 201, order);
+        } else {
+            const parts = (body.parts || []).map(part => ({ ...inventoryItems.find(item => item.id === part.inventoryItemId), ...part }));
+            const task = { ...body, id: Math.max(...tasks.map(t => t.id)) + 1,
+                status: 'PENDING', adminReviewStatus: 'SUBMITTED', parts,
+                materialsCost: parts.reduce((sum, part) => sum + part.quantity * part.unitPrice, 0) };
+            tasks.push(task);
+            sendJson(res, 201, task);
+        }
+        return;
+    }
+
+    if (req.method === 'GET' && req.url.startsWith('/api/v1/tracking/')) {
+        const url = new URL(req.url, `http://${HOST}:${PORT}`);
+        const order = workOrders.find(item => item.trackingCode === url.searchParams.get('trackingCode'));
+        if (url.pathname.endsWith('/summary')) {
+            if (!order) { sendJson(res, 404, { message: 'Order not found' }); return; }
+            sendJson(res, 200, {
+                trackingCode: order.trackingCode, status: order.status, estimatedDate: '2026-12-20',
+                progressPercentage: 50, tasks: [], costs: { laborSubtotal: 100, materialsSubtotal: 50, total: 150 },
+                history: [{ status: 'IN_PROGRESS', changedAtUtc: '2026-11-01T12:00:00Z' }],
+                estimatedDateHistory: [
+                    { previousEstimatedDate: null, estimatedDate: '2026-12-15', reason: null, changedAtUtc: '2026-11-01T12:00:00Z' },
+                    { previousEstimatedDate: '2026-12-15', estimatedDate: '2026-12-20', reason: 'Repuesto en traslado', changedAtUtc: '2026-11-02T12:00:00Z' }
+                ],
+                primaryMechanic: { fullName: mechanics[0].fullName, specialty: mechanics[0].specialty }
+            });
+        } else if (url.pathname.endsWith('/workorders')) {
+            sendJson(res, 200, order ? [{ trackingCode: order.trackingCode, status: order.status, estimatedDate: order.estimatedDate,
+                vehicleId: order.vehicleId, customerId: order.customerId, workshopId: order.workshopId }] : []);
+        } else if (url.pathname.includes('/vehicles/')) sendJson(res, 200, vehicles[0]);
+        else if (url.pathname.includes('/customers/')) sendJson(res, 200, customers[0]);
+        else if (url.pathname.includes('/workshops/')) sendJson(res, 200, { name: 'Taller E2E' });
+        else sendJson(res, 404, {});
         return;
     }
 

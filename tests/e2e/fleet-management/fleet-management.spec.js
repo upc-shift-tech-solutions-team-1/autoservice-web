@@ -1,6 +1,6 @@
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import { By, until, Key } from 'selenium-webdriver';
-import { setupDriver } from '../support/driverSetup.js';
+import { setupDriver, clearWhenReady } from '../support/driverSetup.js';
 
 describe('Fleet Management Context', () => {
     let driver;
@@ -73,8 +73,7 @@ describe('Fleet Management Context', () => {
         await driver.sleep(400);
 
         // Clear search input
-        await searchInput.sendKeys(Key.CONTROL, 'a');
-        await searchInput.sendKeys(Key.BACK_SPACE);
+        await clearWhenReady(driver, By.css('.filter-search-box input, .vehicle-page input[type="text"]'));
     }, 30000);
 
     it('should open New Vehicle dialog, select customer, and fill registration form', async () => {

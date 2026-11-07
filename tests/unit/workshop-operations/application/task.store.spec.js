@@ -14,6 +14,20 @@ vi.mock('../../../../src/shared/infrastructure/http-common', () => ({
 }));
 
 describe('Task Store (Workshop Operations Application)', () => {
+    it('completes the task with the supported backend fields without changing approval or spare parts', async () => {
+        setActivePinia(createPinia());
+        const store = useTaskStore();
+        http.patch.mockResolvedValueOnce({ data: { id: 9, status: 'COMPLETED', adminReviewStatus: 'APPROVED' } });
+        const result = await store.completeTaskFromMechanic(9, {
+            technicalDiagnosis: 'Diagnóstico', customerExplanation: 'Reparación realizada',
+            internalObservation: 'Solo taller', evidenceRegistered: 'https://example.test/evidence', parts: [{ inventoryItemId: 4 }]
+        });
+        expect(http.patch).toHaveBeenCalledWith('/tasks/9', {
+            status: 'COMPLETED', technicalDiagnosis: 'Diagnóstico', customerExplanation: 'Reparación realizada',
+            internalObservation: 'Solo taller', evidenceRegistered: 'https://example.test/evidence'
+        });
+        expect(result.adminReviewStatus).toBe('APPROVED');
+    });
     beforeEach(() => {
         setActivePinia(createPinia());
         vi.clearAllMocks();

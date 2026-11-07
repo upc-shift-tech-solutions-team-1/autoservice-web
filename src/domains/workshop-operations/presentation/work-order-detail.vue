@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 
@@ -14,6 +14,9 @@ import { useAuthStore } from '../../auth/application/auth.store';
 import { useMechanicStore } from '../../staff-coordination/application/mechanic.store';
 import { useTaskStore } from '../application/task.store';
 import { useWorkOrderStore } from '../application/work-order.store';
+import { qualityChecklistFields, qualityChecklistComplete, tasksApprovedForDelivery } from '../domain/work-order-validation';
+import Checkbox from 'primevue/checkbox';
+import { escapeHtml } from '../../../shared/domain/escape-html';
 import TaskDialog from './components/tasks/TaskDialog.vue';
 import { useCustomerStore} from "../../customer-management/application/customer.store.js";
 import { useVehicleStore} from "../../fleet-management/application/vehicle.store.js";
@@ -59,6 +62,16 @@ const currentOrder = computed(() =>
 const orderTasks = computed(() =>
     taskStore.tasks.filter(task => String(task.workOrderId) === String(orderId))
 );
+const estimatedDateDraft = ref('');
+const delayReasonDraft = ref('');
+const savingEstimatedDate = ref(false);
+const estimatedDateError = ref('');
+const estimatedDateSaved = ref(false);
+const qualityDraft = ref({});
+const closingOrder = ref(false);
+const orderActionError = ref('');
+const tasksReadyForDelivery = computed(() => tasksApprovedForDelivery(orderTasks.value));
+const canFinishOrder = computed(() => tasksReadyForDelivery.value && qualityChecklistComplete(qualityDraft.value));
 /*const calculatedTotal = computed(() => {
   let total = 0;
   orderTasks.value.forEach(task => {
@@ -80,6 +93,28 @@ const calculatedTotal = computed(() => {
 
   return total.toFixed(2);
 });
+
+const persistedTotal = computed(() => {
+  if (currentOrder.value?.price === null || currentOrder.value?.price === undefined) {
+    return calculatedTotal.value;
+  }
+  const total = Number(currentOrder.value.price);
+  return Number.isFinite(total) ? total.toFixed(2) : calculatedTotal.value;
+});
+
+const currentEstimatedDate = computed(() =>
+    String(currentOrder.value?.estimatedDate || '').slice(0, 10)
+);
+
+const estimatedDateNeedsReason = computed(() =>
+    Boolean(estimatedDateDraft.value && currentEstimatedDate.value &&
+        estimatedDateDraft.value > currentEstimatedDate.value)
+);
+
+watch(currentOrder, (order) => {
+  if (order) estimatedDateDraft.value = String(order.estimatedDate || '').slice(0, 10);
+  if (order) qualityDraft.value = { ...order.qaChecklist };
+}, { immediate: true });
 
 
 const loadData = async () => {
@@ -108,13 +143,55 @@ const handleTaskSave = async (taskData) => {
   await workOrderStore.updateOrderAutoPrice(orderId, calculatedTotal.value);
 };
 
+const saveEstimatedDate = async () => {
+  estimatedDateError.value = '';
+  estimatedDateSaved.value = false;
+
+  if (!estimatedDateDraft.value || estimatedDateDraft.value === currentEstimatedDate.value) return;
+
+  const delayReason = delayReasonDraft.value.trim();
+  if (estimatedDateNeedsReason.value && !delayReason) {
+    estimatedDateError.value = t('workOrderDetail.estimatedDate.reasonRequired');
+    return;
+  }
+
+  savingEstimatedDate.value = true;
+  try {
+    await workOrderStore.updateWorkOrderEstimatedDate(
+        orderId,
+        estimatedDateDraft.value,
+        estimatedDateNeedsReason.value ? delayReason : null
+    );
+    delayReasonDraft.value = '';
+    estimatedDateSaved.value = true;
+  } catch (error) {
+    estimatedDateError.value = error.response?.data?.message || t('workOrderDetail.estimatedDate.updateError');
+  } finally {
+    savingEstimatedDate.value = false;
+  }
+};
+
 const deliverOrder = async () => {
-  if (!currentOrder.value) return;
-  await workOrderStore.updateWorkOrderChecklist(orderId, {
-    ...currentOrder.value,
-    status: 'DELIVERED'
-  });
-  await workOrderStore.fetchWorkOrders();
+  if (!currentOrder.value || isMechanic.value || !tasksReadyForDelivery.value ||
+      currentOrder.value.status !== 'FINISHED' || !qualityChecklistComplete(currentOrder.value.qaChecklist)) return;
+  await saveOrderStatus('DELIVERED', currentOrder.value.qaChecklist);
+};
+
+const saveOrderStatus = async (status, qaChecklist) => {
+  closingOrder.value = true;
+  orderActionError.value = '';
+  try {
+    await workOrderStore.updateWorkOrderChecklist(orderId, { ...currentOrder.value, status, qaChecklist });
+  } catch (error) {
+    orderActionError.value = error.response?.data?.message || t('workOrderDetail.validation.saveError');
+  } finally {
+    closingOrder.value = false;
+  }
+};
+
+const finishOrder = async () => {
+  if (isMechanic.value || !canFinishOrder.value || ['FINISHED', 'DELIVERED'].includes(currentOrder.value?.status)) return;
+  await saveOrderStatus('FINISHED', qualityDraft.value);
 };
 
 const goBack = () => {
@@ -161,7 +238,7 @@ const printOrder = () => {
     <body>
       <div class="header">
         <div class="logo">AutoService AW</div>
-        <h2>Orden de Trabajo #${order.trackingCode || order.id}</h2>
+        <h2>Orden de Trabajo #${escapeHtml(order.trackingCode || order.id)}</h2>
         <p>Fecha: ${new Date().toLocaleDateString('es-PE', {
     year: 'numeric',
     month: 'long',
@@ -173,25 +250,25 @@ const printOrder = () => {
         <!-- Cliente -->
         <div class="info-box">
           <h3>Cliente</h3>
-          <p><strong>Nombre:</strong> ${customer.fullName || 'No registrado'}</p>
-          <p><strong>DNI:</strong> ${customer.dni || 'N/A'}</p>
-          <p><strong>Teléfono:</strong> ${customer.phone || 'N/A'}</p>
-          <p><strong>Email:</strong> ${customer.email || 'N/A'}</p>
+          <p><strong>Nombre:</strong> ${escapeHtml(customer.fullName || 'No registrado')}</p>
+          <p><strong>DNI:</strong> ${escapeHtml(customer.dni || 'N/A')}</p>
+          <p><strong>Teléfono:</strong> ${escapeHtml(customer.phone || 'N/A')}</p>
+          <p><strong>Email:</strong> ${escapeHtml(customer.email || 'N/A')}</p>
         </div>
 
         <!-- Vehículo -->
         <div class="info-box">
           <h3>Vehículo</h3>
-          <p><strong>Placa:</strong> ${vehicle.plate || 'N/A'}</p>
-          <p><strong>Marca / Modelo:</strong> ${vehicle.brand || ''} ${vehicle.model || ''}</p>
-          <p><strong>Año:</strong> ${vehicle.year || 'N/A'}</p>
-          <p><strong>Color:</strong> ${vehicle.color || 'N/A'}</p>
+          <p><strong>Placa:</strong> ${escapeHtml(vehicle.plate || 'N/A')}</p>
+          <p><strong>Marca / Modelo:</strong> ${escapeHtml(vehicle.brand)} ${escapeHtml(vehicle.model)}</p>
+          <p><strong>Año:</strong> ${escapeHtml(vehicle.year || 'N/A')}</p>
+          <p><strong>Color:</strong> ${escapeHtml(vehicle.color || 'N/A')}</p>
         </div>
       </div>
 
       <h3>Descripción del Problema</h3>
       <p style="background:#f9fafb; padding:18px; border-radius:6px; border-left:4px solid #0b1680;">
-        ${order.description || 'Sin descripción registrada.'}
+        ${escapeHtml(order.description || 'Sin descripción registrada.')}
       </p>
 
       <h3>Tareas / Servicios</h3>
@@ -208,7 +285,7 @@ const printOrder = () => {
         <tbody>
           ${tasks.map(task => `
             <tr>
-              <td>${task.description || ''}</td>
+              <td>${escapeHtml(task.description)}</td>
               <td>${task.status === 'COMPLETED' ? '✅ Completado' : '⏳ Pendiente'}</td>
               <td>S/. ${Number(task.laborPrice || 0).toFixed(2)}</td>
               <td>S/. ${Number(task.materialsCost || 0).toFixed(2)}</td>
@@ -219,7 +296,7 @@ const printOrder = () => {
       </table>
 
       <div class="total-row">
-        <strong>Total a Pagar: S/. ${calculatedTotal.value}</strong>
+        <strong>Total a Pagar: S/. ${persistedTotal.value}</strong>
       </div>
 
       <div class="footer">
@@ -231,6 +308,7 @@ const printOrder = () => {
   `;
 
   const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
   printWindow.document.write(htmlContent);
   printWindow.document.close();
 
@@ -247,7 +325,7 @@ const sendByEmail = (isReport = false) => {
 
 const shareByWhatsApp = () => {
   const order = currentOrder.value;
-  const message = `Orden de Trabajo #${order.trackingCode || order.id} - Total: S/. ${calculatedTotal.value}`;
+  const message = `Orden de Trabajo #${order.trackingCode || order.id} - Total: S/. ${persistedTotal.value}`;
   const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
   window.open(url, '_blank');
 };
@@ -280,6 +358,57 @@ const shareByWhatsApp = () => {
         <Card class="info-card">
           <template #title>{{ t('workOrderDetail.initialDescription') }}</template>
           <template #content><p>{{ currentOrder.description }}</p></template>
+        </Card>
+
+        <Card class="estimated-date-card mt-4" data-testid="work-order-estimated-date-editor">
+          <template #title>{{ t('workOrderDetail.estimatedDate.title') }}</template>
+          <template #content>
+            <form class="estimated-date-form" @submit.prevent="saveEstimatedDate">
+              <label for="estimated-delivery-date">{{ t('workOrderDetail.estimatedDate.dateLabel') }}</label>
+              <input
+                  id="estimated-delivery-date"
+                  v-model="estimatedDateDraft"
+                  data-testid="work-order-estimated-date-input"
+                  type="date"
+                  class="estimated-date-input"
+                  required
+                  @input="estimatedDateSaved = false; estimatedDateError = ''"
+              />
+
+              <div v-if="estimatedDateNeedsReason" class="delay-reason-field">
+                <label for="estimated-date-delay-reason">{{ t('workOrderDetail.estimatedDate.reasonLabel') }}</label>
+                <textarea
+                    id="estimated-date-delay-reason"
+                    v-model="delayReasonDraft"
+                    data-testid="work-order-delay-reason-input"
+                    class="delay-reason-input"
+                    rows="3"
+                    maxlength="1000"
+                    required
+                />
+                <small v-if="!delayReasonDraft.trim()" class="delay-reason-required">
+                  {{ t('workOrderDetail.estimatedDate.reasonRequired') }}
+                </small>
+                <small>{{ t('workOrderDetail.estimatedDate.reasonHelp') }}</small>
+              </div>
+
+              <Message v-if="estimatedDateError" severity="error" :closable="false" data-testid="work-order-estimated-date-error">
+                {{ estimatedDateError }}
+              </Message>
+              <Message v-if="estimatedDateSaved" severity="success" :closable="false" data-testid="work-order-estimated-date-success">
+                {{ t('workOrderDetail.estimatedDate.updated') }}
+              </Message>
+
+              <Button
+                  type="submit"
+                  :label="t('workOrderDetail.estimatedDate.save')"
+                  icon="pi pi-calendar"
+                  :loading="savingEstimatedDate"
+                  :disabled="savingEstimatedDate || !estimatedDateDraft || estimatedDateDraft === currentEstimatedDate"
+                  data-testid="work-order-estimated-date-save"
+              />
+            </form>
+          </template>
         </Card>
 
         <Card class="tasks-card mt-4">
@@ -336,9 +465,18 @@ const shareByWhatsApp = () => {
           <template #title>{{ t('workOrderDetail.quote.title') }}</template>
           <template #content>
             <div class="total-display">
-              <span>S/. {{ calculatedTotal }}</span>
+              <span data-testid="work-order-persisted-total">S/. {{ persistedTotal }}</span>
             </div>
 
+            <div v-if="!isMechanic && !['FINISHED', 'DELIVERED'].includes(currentOrder.status)" class="admin-validation mt-4">
+              <Message v-if="!tasksReadyForDelivery" severity="info" :closable="false">{{ t('workOrderDetail.validation.tasksRequired') }}</Message>
+              <div v-for="field in qualityChecklistFields" :key="field" class="quality-check-row">
+                <Checkbox v-model="qualityDraft[field]" :inputId="`quality-${field}`" binary :disabled="closingOrder || !tasksReadyForDelivery" />
+                <label :for="`quality-${field}`">{{ t(`workOrderDetail.validation.checklist.${field}`) }}</label>
+              </div>
+              <Button :label="t('workOrderDetail.validation.finishButton')" :disabled="!canFinishOrder" :loading="closingOrder" data-testid="finish-work-order" @click="finishOrder" />
+            </div>
+            <Message v-if="orderActionError" severity="error" :closable="false">{{ orderActionError }}</Message>
             <div v-if="!isMechanic && currentOrder.status === 'FINISHED'" class="admin-validation mt-4">
               <Message severity="success" :closable="false" class="mb-3">
                 {{ t('workOrderDetail.validation.readyMessage') }}
@@ -348,6 +486,8 @@ const shareByWhatsApp = () => {
                   icon="pi pi-check-square"
                   severity="success"
                   class="w-full"
+                  :disabled="!tasksReadyForDelivery || !qualityChecklistComplete(currentOrder.qaChecklist)"
+                  :loading="closingOrder"
                   @click="deliverOrder"
               />
             </div>
@@ -378,8 +518,13 @@ const shareByWhatsApp = () => {
 .font-bold { font-weight: bold; }
 
 .total-display { padding: 1.5rem 0; color: #0b1680; font-size: 2.5rem; font-weight: bold; text-align: center; }
+.estimated-date-form { display: grid; gap: 0.75rem; }
+.estimated-date-input, .delay-reason-input { width: 100%; box-sizing: border-box; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+.delay-reason-field { display: grid; gap: 0.5rem; }
+.delay-reason-required { color: #b91c1c; }
 .w-full { width: 100%; }
 .admin-validation { padding-top: 1rem; border-top: 1px solid #e2e8f0; }
+.quality-check-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0; }
 @media (max-width: 768px) { .layout-grid { grid-template-columns: 1fr; } }
 .header-actions {
   display: flex;

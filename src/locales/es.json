@@ -573,6 +573,17 @@
     "totalCost": "Costo Total Estimado",
     "estimatedDate": "Fecha estimada de entrega",
     "estimatedDateUnavailable": "No disponible",
+    "estimatedDateHistory": {
+      "title": "Historial de fechas de entrega",
+      "reason": "Motivo del cambio",
+      "initial": "Fecha estimada inicial registrada por el taller.",
+      "updated": "Fecha estimada actualizada por el taller."
+    },
+    "primaryMechanic": {
+      "title": "Mecánico responsable",
+      "name": "Nombre",
+      "specialty": "Especialidad"
+    },
     "tasksEmpty": "Aún no hay tareas registradas para esta orden.",
     "costs": {
       "labor": "Mano de obra",
@@ -847,10 +858,30 @@
     "quote": {
       "title": "Costo total de la Orden"
     },
+    "estimatedDate": {
+      "title": "Fecha estimada de entrega",
+      "dateLabel": "Nueva fecha estimada",
+      "reasonLabel": "Motivo de la demora",
+      "reasonHelp": "Explica brevemente el motivo para informar al cliente. Máximo 1000 caracteres.",
+      "reasonRequired": "Indica el motivo para poder posponer la fecha estimada.",
+      "save": "Actualizar fecha",
+      "updated": "La fecha estimada se actualizó correctamente.",
+      "updateError": "No se pudo actualizar la fecha estimada. Inténtalo nuevamente."
+    },
     "title": "Detalle de la orden de trabajo",
     "validation": {
-      "readyMessage": "El mecánico ha marcado esta orden como finalizada. Lista para validación.",
-      "deliverButton": "Validar y Entregar Vehículo"
+      "readyMessage": "Control de calidad completado. El vehículo está listo para entregar.",
+      "deliverButton": "Entregar vehículo",
+      "finishButton": "Validar reparación y marcar lista",
+      "tasksRequired": "Todas las tareas deben estar completadas y sus cotizaciones aprobadas antes de cerrar la reparación.",
+      "saveError": "No se pudo guardar el estado de la orden. Inténtalo nuevamente.",
+      "checklist": {
+        "tasksCompleted": "Tareas y evidencias revisadas",
+        "sparePartsChecked": "Repuestos verificados",
+        "diagnosisValidated": "Diagnóstico y costos validados",
+        "cleaningDone": "Limpieza completada",
+        "finalTestDone": "Prueba final realizada"
+      }
     }
   },
   "mechanicOrder": {

@@ -102,8 +102,9 @@ describe('Workshop Operations Context', () => {
         // 5. Click on Create Order
         const createBtn = await driver.wait(until.elementLocated(By.css('.primary-btn')), 5000);
         expect(await createBtn.isDisplayed()).toBe(true);
-        // Uncomment to save the order in the test database
-        // await createBtn.click();
-        // await driver.wait(until.urlIs(`${BASE_URL}/work-orders`), 5000);
+        await createBtn.click();
+        await driver.wait(until.urlIs(`${BASE_URL}/work-orders`), 5000);
+        const saved = await fetch(`${process.env.VITE_API_URL}/workorders`).then(response => response.json());
+        expect(saved.some(order => order.description.includes('E2E Test.'))).toBe(true);
     }, 30000);
 });
