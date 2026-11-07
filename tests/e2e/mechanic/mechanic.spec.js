@@ -7,8 +7,8 @@ describe('Mechanic Context', () => {
     const BASE_URL = 'http://localhost:5173';
 
     // User provided credentials
-    const MECHANIC_EMAIL = 'mechanictest20260916@autoservice.com';
-    const MECHANIC_PASSWORD = 'Test1234!';
+    const MECHANIC_EMAIL = "mechanic.e2e@example.test";
+    const MECHANIC_PASSWORD = "e2e-only-password";
 
     beforeAll(async () => {
         driver = await setupDriver();
@@ -59,7 +59,31 @@ describe('Mechanic Context', () => {
         await proposeTaskBtn.click();
 
         // Wait for the modal to appear
-        const dialog = await driver.wait(until.elementLocated(By.css('.dialog-form')), 5000);
+        const dialog = await driver.wait(
+            until.elementLocated(By.css('.dialog-form')),
+            5000
+        );
+        await driver.wait(until.elementIsVisible(dialog), 5000);
+        const addButtonForCheck = await dialog.findElement(
+            By.xpath(".//button[.//span[text()='Añadir']]")
+        );
+
+        await driver.executeScript(
+            "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+            addButtonForCheck
+        );
+
+        await driver.wait(async () => {
+            return driver.executeScript(`
+                const button = arguments[0];
+                const rect = button.getBoundingClientRect();
+                const top = document.elementFromPoint(
+                    rect.left + rect.width / 2,
+                    rect.top + rect.height / 2
+                );
+                return !!top && button.contains(top);
+            `, addButtonForCheck);
+        }, 5000, 'El boton Añadir sigue cubierto');
 
         // Fill task description
         const descriptionInput = await dialog.findElement(By.css('input[type="text"]'));
