@@ -1,9 +1,25 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { By, until } from 'selenium-webdriver';
+import { By } from 'selenium-webdriver';
 import { setupDriver } from '../support/driverSetup';
 
 describe('Anonymous customer tracking', () => {
     let driver;
+
+    // Presence in the DOM does not imply that Vue's entrance animation
+    // has finished or that Selenium can read the rendered text yet.
+    const visibleText = (selector, expected) => driver.wait(async () => {
+        try {
+            const element = await driver.findElement(By.css(selector));
+            if (!(await element.isDisplayed())) return false;
+            await driver.executeScript("arguments[0].scrollIntoView({block: 'center'});", element);
+            const text = await element.getText();
+            return text.includes(expected) ? text : false;
+        } catch (error) {
+            if (['StaleElementReferenceError', 'NoSuchElementError'].includes(error.name)) return false;
+            throw error;
+        }
+    }, 10000, `Expected visible text "${expected}" in ${selector}`);
+
     beforeAll(async () => { driver = await setupDriver(); }, 30000);
     afterAll(async () => { if (driver) await driver.quit(); });
 
@@ -11,10 +27,9 @@ describe('Anonymous customer tracking', () => {
         await driver.get('http://localhost:5173/tracking');
         await driver.findElement(By.css('.search-form-layout input')).sendKeys('E2E-WO-001');
         await driver.findElement(By.css('.search-btn')).click();
-        const reason = await driver.wait(until.elementLocated(By.css('[data-testid="tracking-delay-reason"]')), 10000);
-        expect(await reason.getText()).toContain('Repuesto en traslado');
-        expect(await driver.findElement(By.css('[data-testid="tracking-primary-mechanic-name"]')).getText()).toContain('Luis Mendoza');
-        expect(await driver.findElement(By.css('[data-testid="tracking-cost-total"]')).getText()).toContain('150');
+        expect(await visibleText('[data-testid="tracking-delay-reason"]', 'Repuesto en traslado')).toContain('Repuesto en traslado');
+        expect(await visibleText('[data-testid="tracking-primary-mechanic-name"]', 'Luis Mendoza')).toContain('Luis Mendoza');
+        expect(await visibleText('[data-testid="tracking-cost-total"]', '150')).toContain('150');
         expect(await driver.getCurrentUrl()).toContain('/tracking');
     }, 30000);
 
@@ -22,10 +37,7 @@ describe('Anonymous customer tracking', () => {
         await driver.get('http://localhost:5173/tracking');
         await driver.findElement(By.css('.search-form-layout input')).sendKeys('UNKNOWN-E2E');
         await driver.findElement(By.css('.search-btn')).click();
-        const message = await driver.wait(until.elementLocated(By.css('.search-card .p-message')), 10000);
-        await driver.wait(until.elementIsVisible(message), 5000);
-        await driver.wait(until.elementTextContains(message, 'No se encontró'), 5000);
-        expect(await message.getText()).toContain('No se encontró');
+        expect(await visibleText('.search-card .p-message', 'No se encontró')).toContain('No se encontró');
         expect(await driver.findElements(By.css('.status-card'))).toHaveLength(0);
     }, 30000);
 });
