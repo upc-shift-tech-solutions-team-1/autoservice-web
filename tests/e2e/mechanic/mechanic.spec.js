@@ -1,6 +1,6 @@
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import { By, until, Key } from 'selenium-webdriver';
-import { setupDriver } from '../support/driverSetup.js';
+import { setupDriver, clickWhenReady } from '../support/driverSetup.js';
 
 describe('Mechanic Context', () => {
     let driver;
@@ -52,11 +52,7 @@ describe('Mechanic Context', () => {
         await driver.wait(until.urlContains('/mechanic/order/'), 10000);
 
         // Click on 'Proponer tarea'
-        const proposeTaskBtn = await driver.wait(
-            until.elementLocated(By.xpath("//button[.//span[text()='Proponer tarea']]")),
-            5000
-        );
-        await proposeTaskBtn.click();
+        await clickWhenReady(driver, By.xpath("//button[.//span[text()='Proponer tarea']]"));
 
         // Wait for the modal to appear
         const dialog = await driver.wait(
@@ -136,8 +132,10 @@ describe('Mechanic Context', () => {
         const submitProposalBtn = await dialog.findElement(By.xpath(".//button[.//span[text()='Enviar propuesta']]"));
         expect(await submitProposalBtn.isDisplayed()).toBe(true);
         
-        // Uncomment to actually submit in test DB
-        // await submitProposalBtn.click();
+        await submitProposalBtn.click();
+        await driver.wait(until.stalenessOf(dialog), 5000);
+        const saved = await fetch(`${process.env.VITE_API_URL}/tasks`).then(response => response.json());
+        expect(saved.some(task => task.description === 'Revisión general y cambio de aceite' && task.adminReviewStatus === 'SUBMITTED')).toBe(true);
         
         // Let's close the dialog to clean up for now, or just let the test end
         // const cancelBtn = await dialog.findElement(By.xpath(".//button[.//span[text()='Cancelar']]"));

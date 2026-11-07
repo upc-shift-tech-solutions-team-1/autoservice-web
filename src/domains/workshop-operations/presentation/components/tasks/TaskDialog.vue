@@ -51,6 +51,7 @@ const emit = defineEmits([
 ]);
 
 const inventoryStore = useInventoryStore();
+const partsLocked = computed(() => Boolean(props.task.id));
 
 /**
  * Returns a translated value when the key exists.
@@ -199,6 +200,7 @@ const taskParts = computed(() =>
  * Adds a new part row.
  */
 const addPart = () => {
+  if (partsLocked.value) return;
   if (!Array.isArray(props.task.parts)) {
     props.task.parts = [];
   }
@@ -229,6 +231,7 @@ const addPart = () => {
  * @param {number} index - Part index.
  */
 const removePart = (index) => {
+  if (partsLocked.value) return;
   props.task.parts.splice(index, 1);
 };
 
@@ -239,6 +242,7 @@ const removePart = (index) => {
  * @param {number} index - Part index.
  */
 const onPartSelected = (itemId, index) => {
+  if (partsLocked.value) return;
   const part = props.task.parts[index];
 
   if (!part) return;
@@ -644,12 +648,16 @@ watch(
             </label>
 
             <small>
+              <template v-if="partsLocked">Los repuestos se conservan como fueron registrados al crear la tarea.</template>
+              <template v-else>
               Seleccione marca y gama según
               disponibilidad del inventario.
+              </template>
             </small>
           </div>
 
           <Button
+              v-if="!partsLocked"
               icon="pi pi-plus"
               :label="t('actions.add')"
               size="small"
@@ -665,6 +673,7 @@ watch(
         >
           <Select
               v-model="part.inventoryItemId"
+              :disabled="partsLocked"
               :options="inventoryOptions"
               optionLabel="name"
               optionValue="id"
@@ -749,6 +758,7 @@ watch(
 
           <InputNumber
               v-model="part.quantity"
+              :disabled="partsLocked"
               :min="1"
               :max="
                 getAvailableStock(
@@ -799,6 +809,7 @@ watch(
           </div>
 
           <Button
+              v-if="!partsLocked"
               icon="pi pi-trash"
               text
               severity="danger"

@@ -19,6 +19,8 @@ const customer = ref(null);
 const workshop = ref(null);
 const tasks = ref([]);
 const history = ref([]);
+const estimatedDateHistory = computed(() => order.value?.estimatedDateHistory || []);
+const primaryMechanic = computed(() => order.value?.primaryMechanic || null);
 const loading = ref(false);
 const errorMsg = ref('');
 
@@ -186,6 +188,17 @@ const formatHistoryDate = value => {
   }).format(date);
 };
 
+const formatEstimatedDate = value => {
+  if (!value) return '';
+  const datePart = String(value).slice(0, 10);
+  const date = new Date(`${datePart}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(locale.value, {
+    dateStyle: 'medium',
+    timeZone: 'UTC'
+  }).format(date);
+};
+
 const formatCurrency = value => new Intl.NumberFormat(locale.value, {
   style: 'currency',
   currency: 'PEN'
@@ -259,7 +272,7 @@ const safeEvidenceUrl = evidence => {
             <div class="estimated-date mt-3" data-testid="tracking-estimated-date">
               <i class="pi pi-calendar mr-2"></i>
               <span class="font-semibold">{{ t('tracking.estimatedDate') }}:</span>
-              <span>{{ order.estimatedDate || t('tracking.estimatedDateUnavailable') }}</span>
+              <span>{{ formatEstimatedDate(order.estimatedDate) || t('tracking.estimatedDateUnavailable') }}</span>
             </div>
 
             <div class="progress-container mt-4 pt-3 border-top-1 border-white-alpha-20">
@@ -269,6 +282,58 @@ const safeEvidenceUrl = evidence => {
               </div>
               <ProgressBar :value="getProgressValue" :showValue="false" class="custom-progress" />
             </div>
+          </template>
+        </Card>
+
+        <Card
+            v-if="estimatedDateHistory.length"
+            class="date-history-card mb-4"
+            data-testid="tracking-estimated-date-history"
+        >
+          <template #title>{{ t('tracking.estimatedDateHistory.title') }}</template>
+          <template #content>
+            <ol class="estimated-date-history-list">
+              <li
+                  v-for="(entry, index) in estimatedDateHistory"
+                  :key="`${entry.changedAtUtc || entry.estimatedDate}-${index}`"
+                  class="estimated-date-history-item"
+                  data-testid="tracking-estimated-date-history-item"
+              >
+                <div class="estimated-date-change">
+                  <span v-if="entry.previousEstimatedDate">
+                    {{ formatEstimatedDate(entry.previousEstimatedDate) }} →
+                  </span>
+                  <strong>{{ formatEstimatedDate(entry.estimatedDate) }}</strong>
+                </div>
+                <p v-if="entry.reason" class="estimated-date-reason" data-testid="tracking-delay-reason">
+                  <strong>{{ t('tracking.estimatedDateHistory.reason') }}:</strong> {{ entry.reason }}
+                </p>
+                <span v-else class="estimated-date-note">
+                  {{ entry.previousEstimatedDate
+                    ? t('tracking.estimatedDateHistory.updated')
+                    : t('tracking.estimatedDateHistory.initial') }}
+                </span>
+                <time v-if="entry.changedAtUtc" class="history-date">
+                  {{ formatHistoryDate(entry.changedAtUtc) }}
+                </time>
+              </li>
+            </ol>
+          </template>
+        </Card>
+
+        <Card
+            v-if="primaryMechanic"
+            class="mechanic-card mb-4"
+            data-testid="tracking-primary-mechanic"
+        >
+          <template #title>{{ t('tracking.primaryMechanic.title') }}</template>
+          <template #content>
+            <p class="mechanic-name" data-testid="tracking-primary-mechanic-name">
+              <strong>{{ t('tracking.primaryMechanic.name') }}:</strong> {{ primaryMechanic.fullName }}
+            </p>
+            <p class="mechanic-specialty" data-testid="tracking-primary-mechanic-specialty">
+              <strong>{{ t('tracking.primaryMechanic.specialty') }}:</strong> {{ primaryMechanic.specialty }}
+            </p>
           </template>
         </Card>
 
@@ -359,7 +424,7 @@ const safeEvidenceUrl = evidence => {
               </div>
               <div class="cost-line cost-line--total">
                 <span>{{ t('tracking.costs.total') }}</span>
-                <strong>{{ formatCurrency(order.costs.total) }}</strong>
+                <strong data-testid="tracking-cost-total">{{ formatCurrency(order.costs.total) }}</strong>
               </div>
             </div>
           </template>
@@ -394,6 +459,13 @@ const safeEvidenceUrl = evidence => {
 .custom-progress { height: 10px; background: rgba(255,255,255,0.2); border-radius: 8px; }
 .custom-progress :deep(.p-progressbar-value) { background: #4ade80; }
 .history-card { border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); }
+.date-history-card, .mechanic-card { border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); }
+.estimated-date-history-list { list-style: none; margin: 0; padding: 0; }
+.estimated-date-history-item { padding: 0.75rem 0; border-bottom: 1px solid #e2e8f0; }
+.estimated-date-history-item:last-child { border-bottom: 0; }
+.estimated-date-change { color: #0b1680; }
+.estimated-date-reason, .mechanic-name, .mechanic-specialty { margin: 0.5rem 0 0; color: #475569; }
+.estimated-date-note { display: inline-block; margin-top: 0.5rem; color: #64748b; }
 .history-timeline { list-style: none; margin: 0; padding: 0; }
 .history-item { position: relative; display: flex; gap: 0.9rem; padding: 0 0 1.2rem; color: #64748b; }
 .history-item:not(:last-child)::before { content: ''; position: absolute; left: 0.55rem; top: 1.25rem; bottom: 0; border-left: 2px solid #cbd5e1; }

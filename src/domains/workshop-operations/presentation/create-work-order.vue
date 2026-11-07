@@ -14,6 +14,7 @@ import DatePicker from 'primevue/datepicker';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import Textarea from 'primevue/textarea';
+import Message from 'primevue/message';
 
 import { useCustomerStore } from '../../customer-management/application/customer.store';
 import { useVehicleStore } from '../../fleet-management/application/vehicle.store';
@@ -38,6 +39,7 @@ const form = ref({
 });
 
 const autoCustomerName = ref('');
+const saveError = ref('');
 
 /**
  * Loads initial data.
@@ -85,11 +87,13 @@ const handleVehicleChange = () => {
  * Saves work order.
  */
 const saveOrder = async () => {
+  saveError.value = '';
   if (
       !form.value.customerId ||
       !form.value.vehicleId ||
       !form.value.mechanicId
   ) {
+    saveError.value = 'Selecciona un vehículo con cliente y un mecánico antes de guardar.';
     return;
   }
 
@@ -100,6 +104,7 @@ const saveOrder = async () => {
 
     router.push('/work-orders');
   } catch (error) {
+    saveError.value = error.response?.data?.message || 'No se pudo crear la orden. Revisa los datos e inténtalo nuevamente.';
     console.error(error);
   }
 };
@@ -114,6 +119,7 @@ const cancel = () => {
 
 <template>
   <div class="create-wo-container">
+    <Message v-if="saveError" severity="error" :closable="false">{{ saveError }}</Message>
     <div class="header-section">
       <h1>
         {{ t('workOrders.create.title') }}

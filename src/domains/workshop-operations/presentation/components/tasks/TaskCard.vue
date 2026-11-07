@@ -706,11 +706,11 @@ const materialsTitle = computed(() =>
 
           <div>
             <strong>
-              Trabajo validado
+              Trabajo completado
             </strong>
 
             <span>
-              La tarea fue completada y aprobada.
+              Cotización aprobada y tarea completada. El control final se realiza en la orden.
             </span>
           </div>
         </div>

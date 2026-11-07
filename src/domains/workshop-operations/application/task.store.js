@@ -476,7 +476,8 @@ export const useTaskStore = defineStore('task', {
 
         /**
          * Completes a task from mechanic workflow.
-         * Escalates to admin approval queue with standard system values.
+         * Preserves quotation approval managed by the backend.
+         * Final repair validation belongs to the work order checklist.
          *
          * @param {string|number} id - Task identifier.
          * @param {Object} reportData - Completion report payload.
@@ -504,20 +505,7 @@ export const useTaskStore = defineStore('task', {
                     reportData.internalObservation,
 
                     evidenceRegistered:
-                    reportData.evidenceRegistered,
-
-                    parts: normalizeTaskParts(
-                        reportData.parts
-                    ),
-
-                    adminReviewStatus:
-                    REVIEW_STATUS.SUBMITTED,
-
-                    customerReportStatus:
-                    CUSTOMER_VISIBILITY.HIDDEN,
-
-                    completedAt:
-                        new Date().toISOString()
+                    reportData.evidenceRegistered
                 };
 
                 const response = await http.patch(

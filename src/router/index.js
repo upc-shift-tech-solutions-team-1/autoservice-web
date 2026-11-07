@@ -50,7 +50,8 @@ const routes = [
         component: () =>
             import('../shared/presentation/admin-layout.vue'),
         meta: {
-            requiresAuth: true
+            requiresAuth: true,
+            role: 'admin'
         },
         children: [
             {
@@ -127,7 +128,7 @@ const router = createRouter({
 /**
  * Global authentication and authorization guard.
  */
-router.beforeEach((to) => {
+export const authorizeRoute = (to) => {
     const authStore = useAuthStore();
 
     if (
@@ -137,23 +138,13 @@ router.beforeEach((to) => {
         return '/login';
     }
 
-    if (
-        authStore.isAuthenticated &&
-        authStore.userRole === 'mechanic' &&
-        to.path === '/'
-    ) {
-        return '/mechanic/workspace';
-    }
-
-    if (
-        authStore.isAuthenticated &&
-        authStore.userRole === 'mechanic' &&
-        to.path.startsWith('/admin')
-    ) {
-        return '/mechanic/workspace';
+    if (to.meta.role && authStore.userRole !== to.meta.role) {
+        return authStore.userRole === 'mechanic' ? '/mechanic/workspace' : '/';
     }
 
     return true;
-});
+};
+
+router.beforeEach(authorizeRoute);
 
 export default router;
