@@ -14,6 +14,7 @@ const { t, locale } = useI18n();
 
 const trackingCode = ref('');
 const order = ref(null);
+const rawOrderData = ref(null);
 const vehicle = ref(null);
 const customer = ref(null);
 const workshop = ref(null);
@@ -61,7 +62,9 @@ const searchOrder = async () => {
 
     const orderData = Array.isArray(orderResult.value?.data)
       ? orderResult.value.data[0]
-      : null;
+      : (orderResult.value?.data || null);
+
+    rawOrderData.value = orderData;
 
     if (!orderData) {
       console.warn('La respuesta pública de la orden no contiene datos relacionados.');
@@ -114,6 +117,7 @@ const searchOrder = async () => {
 
 const resetSearch = () => {
   order.value = null;
+  rawOrderData.value = null;
   trackingCode.value = '';
   vehicle.value = null;
   customer.value = null;
@@ -121,6 +125,52 @@ const resetSearch = () => {
   tasks.value = [];
   history.value = [];
 };
+
+const currentStatus = computed(() => {
+  return order.value?.status || rawOrderData.value?.status || 'PENDING';
+});
+
+const currentStatusSeverity = computed(() => {
+  const status = currentStatus.value;
+  switch (status) {
+    case 'FINISHED':
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return 'success';
+    case 'IN_PROGRESS':
+      return 'info';
+    case 'CANCELLED':
+      return 'danger';
+    case 'PENDING':
+    default:
+      return 'warn';
+  }
+});
+
+const effectiveEstimatedDate = computed(() => {
+  return (
+    order.value?.effectiveEstimatedDate ||
+    order.value?.estimatedDate ||
+    rawOrderData.value?.effectiveEstimatedDate ||
+    rawOrderData.value?.estimatedDate ||
+    ''
+  );
+});
+
+const delayReason = computed(() => {
+  const reason = (
+    order.value?.delayReason ||
+    order.value?.delay_reason ||
+    rawOrderData.value?.delayReason ||
+    rawOrderData.value?.delay_reason ||
+    order.value?.reasons ||
+    rawOrderData.value?.reasons ||
+    ''
+  );
+  return typeof reason === 'string' ? reason.trim() : String(reason || '').trim();
+});
+
+const hasDelay = computed(() => Boolean(delayReason.value));
 
 const getStatusMessage = computed(() => {
   if (!order.value) return '';
@@ -244,7 +294,15 @@ const safeEvidenceUrl = evidence => {
         <Card class="status-card mb-4" data-testid="tracking-status">
           <template #content>
             <div class="status-header">
-              <h2>{{ t('tracking.greeting', { name: customer?.fullName || 'Cliente' }) }}</h2>
+              <div class="flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <h2>{{ t('tracking.greeting', { name: customer?.fullName || 'Cliente' }) }}</h2>
+                <Tag
+                    :value="stageLabel(currentStatus)"
+                    :severity="currentStatusSeverity"
+                    class="status-badge"
+                    data-testid="tracking-current-status-tag"
+                />
+              </div>
               <p class="status-msg">{{ getStatusMessage }}</p>
             </div>
 
@@ -256,10 +314,23 @@ const safeEvidenceUrl = evidence => {
               </div>
             </div>
 
-            <div class="estimated-date mt-3" data-testid="tracking-estimated-date">
-              <i class="pi pi-calendar mr-2"></i>
-              <span class="font-semibold">{{ t('tracking.estimatedDate') }}:</span>
-              <span>{{ order.estimatedDate || t('tracking.estimatedDateUnavailable') }}</span>
+            <div class="estimated-date-wrapper mt-3">
+              <div class="estimated-date" data-testid="tracking-estimated-date">
+                <i class="pi pi-calendar mr-2"></i>
+                <span class="font-semibold">{{ t('tracking.effectiveEstimatedDate') }}:</span>
+                <span class="date-value font-bold">{{ effectiveEstimatedDate || t('tracking.estimatedDateUnavailable') }}</span>
+              </div>
+            </div>
+
+            <div v-if="hasDelay" class="delay-alert mt-3" data-testid="tracking-delay-section">
+              <div class="delay-alert-header">
+                <i class="pi pi-exclamation-triangle delay-icon mr-2"></i>
+                <strong class="delay-title">{{ t('tracking.delayNotice') }}</strong>
+              </div>
+              <div class="delay-alert-body mt-2">
+                <span class="font-semibold">{{ t('tracking.delayReasonTitle') }}:</span>
+                <span class="delay-text ml-1">{{ delayReason }}</span>
+              </div>
             </div>
 
             <div class="progress-container mt-4 pt-3 border-top-1 border-white-alpha-20">
@@ -386,9 +457,18 @@ const safeEvidenceUrl = evidence => {
 /* Cards de Resultados */
 .status-card { border-radius: 24px; background: linear-gradient(135deg, #0b1680 0%, #1e3a8a 100%); color: white; box-shadow: 0 14px 34px rgba(11, 22, 128, 0.2); }
 .status-header h2 { margin: 0; font-size: 1.8rem; }
+.status-badge { font-size: 0.85rem; padding: 0.35rem 0.8rem; border-radius: 9999px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; }
 .status-msg { font-size: 1.1rem; line-height: 1.5; margin-top: 0.5rem; color: #e0e7ff; }
 .vehicle-info { display: flex; align-items: center; gap: 1rem; background: rgba(255,255,255,0.1); padding: 1.2rem; border-radius: 16px; }
-.estimated-date { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; color: #e0e7ff; }
+.estimated-date-wrapper { background: rgba(255, 255, 255, 0.12); padding: 0.85rem 1.1rem; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.18); }
+.estimated-date { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; color: #ffffff; }
+.date-value { color: #fef08a; }
+.delay-alert { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-left: 5px solid #d97706; border-radius: 12px; padding: 0.95rem 1.15rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); }
+.delay-alert-header { display: flex; align-items: center; }
+.delay-title { color: #92400e; font-size: 1rem; }
+.delay-icon { font-size: 1.15rem; color: #d97706; }
+.delay-alert-body { font-size: 0.95rem; line-height: 1.45; color: #78350f; }
+.delay-text { font-weight: 500; }
 .text-white-alpha-70 { color: rgba(255,255,255,0.7); }
 .border-white-alpha-20 { border-color: rgba(255,255,255,0.2) !important; }
 .custom-progress { height: 10px; background: rgba(255,255,255,0.2); border-radius: 8px; }
@@ -453,6 +533,9 @@ const safeEvidenceUrl = evidence => {
 .tracking-wider { letter-spacing: 0.05em; }
 .text-center { text-align: center; }
 .block { display: block; }
+.gap-2 { gap: 0.5rem; }
+.flex-wrap { flex-wrap: wrap; }
+.ml-1 { margin-left: 0.25rem; }
 .fade-in { animation: fadeIn 0.3s ease-in; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 </style>
